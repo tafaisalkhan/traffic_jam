@@ -7,6 +7,7 @@ signal exited(vehicle: VehicleController)
 
 enum State { IDLE, SELECTED, PATH_CHECKING, MOVING, TURNING, BLOCKED, EXITED }
 var vehicle_id := ""
+var vehicle_type := ""
 var route: Array = []
 var board_size := Vector2i.ZERO
 var state := State.IDLE
@@ -21,6 +22,7 @@ var smoke_tick := 0.0
 
 func setup(definition: Dictionary, size: Vector2i) -> void:
 	vehicle_id = definition.id
+	vehicle_type = str(definition.get("type", ""))
 	route = definition.route
 	board_size = size
 	lane_offset = float(definition.get("lane_offset", 0.0))
