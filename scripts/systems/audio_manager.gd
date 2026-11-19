@@ -75,9 +75,16 @@ func _apply_audio_settings() -> void:
 		for p in sfx_players:
 			p.stop()
 
+func stop_car_tap() -> void:
+	for p in sfx_players:
+		if is_instance_valid(p) and p.playing and p.stream == CarTapSound:
+			p.stop()
+
 func play_event(event: Event) -> void:
 	if event == Event.MUSIC or not sound_enabled or sfx_players.is_empty():
 		return
+	if event == Event.VEHICLE_EXIT:
+		stop_car_tap()
 	var player := sfx_players[sfx_cursor]
 	sfx_cursor = (sfx_cursor + 1) % sfx_players.size()
 	match event:
