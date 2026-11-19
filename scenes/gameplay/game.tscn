@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://ylg5g52v8rdw"]
+
+[ext_resource type="Script" uid="uid://x1ml2depggor" path="res://scripts/core/game.gd" id="1"]
+
+[node name="TrafficMash" type="Node3D" unique_id=1048624704]
+script = ExtResource("1")
