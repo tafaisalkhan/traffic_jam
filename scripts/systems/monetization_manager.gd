@@ -44,6 +44,8 @@ var interstitial_plugin: Object
 var rewarded_plugin: Object
 var bottom_banner_uid := -1
 var top_banner_uid := -1
+var bottom_banner_loaded := false
+var top_banner_loaded := false
 var interstitial_uid := -1
 var rewarded_uid := -1
 var bottom_banner_desired := false
@@ -99,6 +101,15 @@ func _mark_no_fill(reason: String) -> void:
 		no_fill_this_launch = true
 		push_warning("AdMob no-fill active: %s" % reason)
 		hide_banner()
+		if banner_plugin != null:
+			if bottom_banner_uid >= 0:
+				banner_plugin.call("destroy", bottom_banner_uid)
+				bottom_banner_uid = -1
+			if top_banner_uid >= 0:
+				banner_plugin.call("destroy", top_banner_uid)
+				top_banner_uid = -1
+		bottom_banner_loaded = false
+		top_banner_loaded = false
 		no_fill_changed.emit(true)
 	rewarded_ready = false
 	rewarded_ready_changed.emit(false)
@@ -155,6 +166,8 @@ func _load_banner_at(ad_position: int) -> int:
 	if ad_size_plugin != null:
 		size = ad_size_plugin.call("getCurrentOrientationAnchoredAdaptiveBannerAdSize", -1)
 	var uid := int(banner_plugin.call("create", {"ad_unit_id": banner_unit_id, "ad_position": ad_position, "ad_size": size}))
+	if uid >= 0:
+		banner_plugin.call("hide", uid)
 	banner_plugin.call("load_ad", uid, _ad_request(), PackedStringArray())
 	return uid
 
@@ -214,18 +227,22 @@ func _sync_banners() -> void:
 	if banner_plugin == null:
 		return
 	if bottom_banner_uid >= 0:
-		if bottom_banner_desired and not no_fill_this_launch and not ads_removed:
+		if bottom_banner_desired and bottom_banner_loaded and not no_fill_this_launch and not ads_removed:
 			banner_plugin.call("show", bottom_banner_uid)
 		else:
 			banner_plugin.call("hide", bottom_banner_uid)
 	if top_banner_uid >= 0:
-		if top_banner_desired and not no_fill_this_launch and not ads_removed:
+		if top_banner_desired and top_banner_loaded and not no_fill_this_launch and not ads_removed:
 			banner_plugin.call("show", top_banner_uid)
 		else:
 			banner_plugin.call("hide", top_banner_uid)
 
 func _on_banner_loaded(uid: int) -> void:
-	if uid == bottom_banner_uid or uid == top_banner_uid:
+	if uid == bottom_banner_uid:
+		bottom_banner_loaded = true
+		_sync_banners()
+	elif uid == top_banner_uid:
+		top_banner_loaded = true
 		_sync_banners()
 
 func _on_banner_failed(uid: int, _error: Dictionary) -> void:
