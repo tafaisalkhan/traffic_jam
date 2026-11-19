@@ -22,7 +22,7 @@ func _get_android_dependencies(_platform: EditorExportPlatform, _debug: bool) ->
 		"com.google.android.gms:play-services-ads:24.9.0",
 		"com.google.android.play:app-update:2.1.0",
 		"com.google.android.play:review:2.0.1",
-		"com.android.billingclient:billing:7.1.1"
+		"com.android.billingclient:billing:8.0.0"
 	])
 
 func _read_admob_app_id() -> String:
