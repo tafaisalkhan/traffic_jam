@@ -27,5 +27,5 @@ func _run() -> void:
 	game.pending_time_reward = true
 	game._on_reward_earned(50)
 	assert(game.playing and game.time_remaining == 15.0 and game.level_manager.coins == 50, "Verified ad reward adds coins and time")
-	print("Traffic Mash timed level flow test passed.")
+	print("City Rescue Puzzle timed level flow test passed.")
 	quit()

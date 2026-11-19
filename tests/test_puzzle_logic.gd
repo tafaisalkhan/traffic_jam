@@ -19,5 +19,5 @@ func _init() -> void:
 	var stars := manager.complete_level(1, 1, [1, 2, 4])
 	assert(stars == 3 and manager.is_unlocked(2), "Three-star completion unlocks the next level")
 	assert(manager.coins == 45, "Star rewards grant coins once")
-	print("Traffic Mash level and progression tests passed.")
+	print("City Rescue Puzzle level and progression tests passed.")
 	quit()

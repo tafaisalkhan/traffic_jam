@@ -21,5 +21,5 @@ func _init() -> void:
 	assert(not manager.spend_coins(25) and manager.coins == 20, "Extra time cannot spend unavailable coins")
 	manager.add_reward_coins(50)
 	assert(manager.spend_coins(25) and manager.coins == 45, "Rewarded coins can buy extra time")
-	print("Traffic Mash save validation tests passed.")
+	print("City Rescue Puzzle save validation tests passed.")
 	quit()

@@ -1,4 +1,4 @@
-# Traffic Mash
+# City Rescue Puzzle
 
 An original Godot 4 traffic-escape puzzle for Android. No reference-game code, artwork, layouts, or UI assets are reused.
 

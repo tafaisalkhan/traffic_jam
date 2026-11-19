@@ -40,5 +40,5 @@ func _run() -> void:
 	assert(rewards.earned == 50, "Reward callback grants coins once")
 	monetization._on_rewarded_closed(monetization.rewarded_uid)
 	assert(not monetization.reward_pending, "Closing an ad clears its pending reward")
-	print("Traffic Mash delivery system tests passed.")
+	print("City Rescue Puzzle delivery system tests passed.")
 	quit()

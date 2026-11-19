@@ -33,5 +33,5 @@ func _run() -> void:
 	ui.show_pause()
 	ui.show_complete(3, 3)
 	assert(ui.root.get_child_count() > 0, "A UI screen should be present")
-	print("Traffic Mash UI flow test passed.")
+	print("City Rescue Puzzle UI flow test passed.")
 	quit()

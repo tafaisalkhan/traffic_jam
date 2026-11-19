@@ -14,5 +14,5 @@ func _run() -> void:
 	vehicle.drive_out()
 	await vehicle.exited
 	assert(vehicle.state == Vehicle.State.EXITED, "Vehicle must reach its exit and emit completion")
-	print("Traffic Mash vehicle exit animation test passed.")
+	print("City Rescue Puzzle vehicle exit animation test passed.")
 	quit()

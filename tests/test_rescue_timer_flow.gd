@@ -34,5 +34,5 @@ func _run() -> void:
 	game.time_remaining = 0.01
 	game._process(1.0)
 	assert(game.time_expired and not game.playing and game.ui.time_overlay != null, "Rescue timeout opens recovery choices")
-	print("Traffic Mash rescue timer flow test passed.")
+	print("City Rescue Puzzle rescue timer flow test passed.")
 	quit()

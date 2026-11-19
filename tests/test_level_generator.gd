@@ -13,5 +13,5 @@ func _init() -> void:
 			assert(level.solution_order.size() == level.vehicles.size(), "Every generated car must have an escape order")
 			assert(level.difficulty_rating >= 1 and level.difficulty_rating <= 10, "Difficulty estimate stays bounded")
 			assert(Solver.solve(level).size() == level.vehicles.size(), "Solver must confirm each generated level")
-	print("Traffic Mash generator tests passed.")
+	print("City Rescue Puzzle generator tests passed.")
 	quit()

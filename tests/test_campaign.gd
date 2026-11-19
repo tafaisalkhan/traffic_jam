@@ -9,5 +9,5 @@ func _init() -> void:
 	assert(errors.is_empty(), "Campaign validation failed")
 	assert(Catalog.get_level(11).seed == 104729 + 11 * 7919, "Generated campaign seeds must be reproducible")
 	assert(Catalog.get_level(300).campaign_difficulty == "expert_combinations", "Final campaign phase must be expert")
-	print("Traffic Mash 300-level campaign validation passed.")
+	print("City Rescue Puzzle 300-level campaign validation passed.")
 	quit()
