@@ -226,9 +226,52 @@ func _check_and_dispatch_clear_heroes() -> void:
 			_dispatch_hero(hero)
 
 
+var _intro_path_container: Node3D
+
+func _clear_intro_path_markers() -> void:
+	if _intro_path_container != null and is_instance_valid(_intro_path_container):
+		_intro_path_container.queue_free()
+	_intro_path_container = null
+
+func _spawn_intro_path_markers(route: Array[Vector2i]) -> Array[MeshInstance3D]:
+	_clear_intro_path_markers()
+	var markers: Array[MeshInstance3D] = []
+	if level_root == null or route.is_empty():
+		return markers
+	var board_size: Vector2i = level.get("board_size", Vector2i(8, 12))
+	_intro_path_container = Node3D.new()
+	_intro_path_container.name = "IntroPathMarkers"
+	level_root.add_child(_intro_path_container)
+
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.18, 0.95, 0.55, 0.92)
+	mat.emission_enabled = true
+	mat.emission = Color(0.18, 0.95, 0.55)
+	mat.emission_energy_multiplier = 1.6
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.28
+	sphere.height = 0.22
+	sphere.radial_segments = 12
+	sphere.rings = 6
+
+	for idx in range(route.size()):
+		var world_pt := LevelData.cell_to_world(route[idx], board_size)
+		var dot := MeshInstance3D.new()
+		dot.mesh = sphere
+		dot.material_override = mat
+		dot.position = Vector3(world_pt.x, 0.32, world_pt.z)
+		dot.scale = Vector3.ZERO
+		_intro_path_container.add_child(dot)
+		markers.append(dot)
+	return markers
+
 func _play_intro_sequence() -> void:
 	var token := round_token
 	playing = false
+	_clear_intro_path_markers()
 	var primary_hero: VehicleController = hero_vehicles[0] if not hero_vehicles.is_empty() else null
 	if camera == null or not is_instance_valid(primary_hero):
 		rescue_phase = RescuePhase.PLAYING
@@ -245,35 +288,62 @@ func _play_intro_sequence() -> void:
 	var fov := 46.0
 	camera.projection = Camera3D.PROJECTION_PERSPECTIVE
 	camera.fov = fov
-	var cam_start := Vector3(half.x * 0.42, maxf(4.6, half.y * 0.35), half.y + 7.5)
-	var hero_look := Vector3(target_pos.x * level_root.scale.x, 1.35, target_pos.z * level_root.scale.z)
+	var hero_look := Vector3(target_pos.x * level_root.scale.x, 1.25, target_pos.z * level_root.scale.z)
+	var board_size: Vector2i = level.get("board_size", Vector2i(8, 12))
+	var path_end_local := LevelData.cell_to_world(primary_hero.route[-1], board_size) if not primary_hero.route.is_empty() else target_pos
+	var path_end_look := Vector3(path_end_local.x * level_root.scale.x, 0.85, path_end_local.z * level_root.scale.z)
+	var path_mid_look := hero_look.lerp(path_end_look, 0.55)
+
+	var cam_focus := hero_look + Vector3(half.x * 0.28, maxf(5.5, half.y * 0.34), maxf(5.5, half.y * 0.42))
+	var cam_path_view := path_mid_look + Vector3(half.x * 0.16, maxf(8.5, half.y * 0.58), maxf(6.5, half.y * 0.45))
 	var end_height := full_size / (2.0 * tan(deg_to_rad(fov * 0.5)))
 	var cam_end := Vector3(0.0, end_height, 0.01)
-	camera.position = cam_start
-	camera.look_at(hero_look)
-	_update_hud("Stage %d: %d emergency vehicle(s) stuck in jam!" % [current_stage, heroes_total])
 
+	camera.position = cam_focus
+	camera.look_at(hero_look)
+	_update_hud("Stage %d: Clear the jam on the Ambulance's path!" % current_stage)
+
+	# 1. Focus smoothly on the Ambulance entering the jam
 	_camera_intro_tween = create_tween()
-	_camera_intro_tween.tween_property(primary_hero, "position", target_pos, 1.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_camera_intro_tween.tween_property(primary_hero, "position", target_pos, 1.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	await _camera_intro_tween.finished
 	if token != round_token:
 		return
 
-	await get_tree().create_timer(0.45).timeout
-	if token != round_token:
-		return
+	# 2. Highlight the Ambulance's exit path and glide smoothly along the jam & route
+	var markers := _spawn_intro_path_markers(primary_hero.route)
+	for m_idx in range(markers.size()):
+		var dot := markers[m_idx]
+		if is_instance_valid(dot):
+			var dt := dot.create_tween()
+			dt.tween_interval(float(m_idx) * 0.06)
+			dt.tween_property(dot, "scale", Vector3(1.15, 1.15, 1.15), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			dt.tween_property(dot, "scale", Vector3.ONE, 0.12)
 
 	_camera_intro_tween = create_tween()
 	_camera_intro_tween.set_parallel(true)
-	_camera_intro_tween.tween_property(camera, "position", cam_end, 1.85).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_camera_intro_tween.tween_property(camera, "position", cam_path_view, 1.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_camera_intro_tween.tween_method(func(t: float) -> void:
 		if is_instance_valid(camera):
-			camera.look_at(hero_look.lerp(Vector3.ZERO, t))
-	, 0.0, 1.0, 1.85).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+			camera.look_at(hero_look.lerp(path_mid_look, t))
+	, 0.0, 1.0, 1.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	await _camera_intro_tween.finished
+	if token != round_token:
+		return
+
+	# 3. Smoothly pull out to full overhead gameplay framing and fade intro path markers
+	_camera_intro_tween = create_tween()
+	_camera_intro_tween.set_parallel(true)
+	_camera_intro_tween.tween_property(camera, "position", cam_end, 1.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_camera_intro_tween.tween_method(func(t: float) -> void:
+		if is_instance_valid(camera):
+			camera.look_at(path_mid_look.lerp(Vector3.ZERO, t))
+	, 0.0, 1.0, 1.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	await _camera_intro_tween.finished
 	if token != round_token:
 		return
 	_camera_intro_tween = null
+	_clear_intro_path_markers()
 
 	_set_gameplay_camera()
 	playing = false

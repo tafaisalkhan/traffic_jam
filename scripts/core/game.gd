@@ -64,7 +64,13 @@ var home_popup_shown_this_launch := false
 var has_entered_gameplay := false
 var pending_free_chest_reward := false
 
+func _sync_gameplay_music() -> void:
+	if audio_manager != null and is_instance_valid(audio_manager):
+		var paused := get_tree().paused if is_inside_tree() else false
+		audio_manager.set_gameplay_active(playing and not paused and not level_finished and not lives_fail_open and not time_options_open)
+
 func _process(delta: float) -> void:
+	_sync_gameplay_music()
 	if custom_timer or not playing or level.is_empty():
 		return
 	time_remaining = maxf(0.0, time_remaining - delta)
@@ -745,11 +751,13 @@ func _on_privacy_dismissed() -> void:
 func _pause_game() -> void:
 	if not playing: return
 	get_tree().paused = true
+	_sync_gameplay_music()
 	ui.show_pause()
 	monetization_manager.show_menu_banners()
 
 func _resume_game() -> void:
 	get_tree().paused = false
+	_sync_gameplay_music()
 	monetization_manager.show_gameplay_banner()
 
 func _show_main_menu() -> void:
@@ -762,6 +770,7 @@ func _show_main_menu() -> void:
 	time_options_open = false
 	pending_time_reward = false
 	pending_menu_reward = false
+	_sync_gameplay_music()
 	ui.configure_progress(level_manager.highest_unlocked, level_manager.stars_by_level, level_manager.coins, Campaign.total_levels())
 	ui.configure_profile(level_manager.settings, level_manager.selected_cosmetic)
 	ui.configure_monetization(level_manager.ads_removed, monetization_manager.purchase_available())

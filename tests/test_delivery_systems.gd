@@ -17,7 +17,11 @@ func _run() -> void:
 	root.add_child(audio)
 	await process_frame
 	assert(audio.music_players.size() == 2, "Both background music tracks have players")
-	assert(audio.music_players[0].playing and audio.music_players[1].playing, "Both background music tracks play in parallel when enabled")
+	assert(not audio.music_players[0].playing and audio.music_players[1].playing, "Only bg_music2 plays outside active gameplay")
+	audio.set_gameplay_active(true)
+	assert(audio.music_players[0].playing and audio.music_players[1].playing, "Both bg_music1 and bg_music2 play in parallel during active gameplay")
+	audio.set_gameplay_active(false)
+	assert(not audio.music_players[0].playing and audio.music_players[1].playing, "bg_music1 stops on pause/end while bg_music2 keeps playing")
 	audio.configure({"music": false, "sound": false})
 	assert(not audio.music_players[0].playing and not audio.music_players[1].playing, "Both music tracks stop immediately when disabled")
 	audio.play_event(Audio.Event.MUSIC)

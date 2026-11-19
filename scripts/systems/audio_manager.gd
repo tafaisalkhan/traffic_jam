@@ -15,6 +15,7 @@ const StarSound := preload("res://assets/audio/star_sound.mp3")
 
 var music_enabled := true
 var sound_enabled := true
+var gameplay_music_active := false
 var music_tracks: Array[AudioStream] = [BgMusic1, BgMusic2]
 var music_players: Array[AudioStreamPlayer] = []
 var music_player: AudioStreamPlayer
@@ -22,6 +23,7 @@ var sfx_players: Array[AudioStreamPlayer] = []
 var sfx_cursor := 0
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	for track in music_tracks:
 		var player := AudioStreamPlayer.new()
 		player.volume_db = -18.0
@@ -41,7 +43,16 @@ func _ready() -> void:
 func _on_music_finished(player: AudioStreamPlayer) -> void:
 	if not music_enabled or not is_instance_valid(player):
 		return
+	if not music_players.is_empty() and player == music_players[0] and not gameplay_music_active:
+		return
 	player.play()
+
+func set_gameplay_active(active: bool) -> void:
+	if gameplay_music_active == active:
+		return
+	gameplay_music_active = active
+	if is_inside_tree():
+		_apply_audio_settings()
 
 func configure(settings: Dictionary) -> void:
 	music_enabled = bool(settings.get("music", true))
@@ -50,10 +61,12 @@ func configure(settings: Dictionary) -> void:
 		_apply_audio_settings()
 
 func _apply_audio_settings() -> void:
-	for player in music_players:
+	for i in range(music_players.size()):
+		var player := music_players[i]
 		if not is_instance_valid(player):
 			continue
-		if music_enabled:
+		var should_play := music_enabled and (gameplay_music_active if i == 0 else true)
+		if should_play:
 			if not player.playing:
 				player.play()
 		else:
