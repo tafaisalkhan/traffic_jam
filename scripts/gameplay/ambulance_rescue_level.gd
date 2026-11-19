@@ -272,7 +272,13 @@ func _play_intro_sequence() -> void:
 	var token := round_token
 	playing = false
 	_clear_intro_path_markers()
-	var primary_hero: VehicleController = hero_vehicles[0] if not hero_vehicles.is_empty() else null
+	var primary_hero: VehicleController = null
+	for hero in hero_vehicles:
+		if is_instance_valid(hero) and hero.vehicle_type == "ambulance":
+			primary_hero = hero
+			break
+	if primary_hero == null and not hero_vehicles.is_empty():
+		primary_hero = hero_vehicles[0]
 	if camera == null or not is_instance_valid(primary_hero):
 		rescue_phase = RescuePhase.PLAYING
 		playing = true
