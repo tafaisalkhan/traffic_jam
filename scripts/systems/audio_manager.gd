@@ -15,17 +15,21 @@ const StarSound := preload("res://assets/audio/star_sound.mp3")
 var music_enabled := true
 var sound_enabled := true
 var music_tracks: Array[AudioStream] = [BgMusic1, BgMusic2]
-var music_index := 0
+var music_players: Array[AudioStreamPlayer] = []
 var music_player: AudioStreamPlayer
 var sfx_players: Array[AudioStreamPlayer] = []
 var sfx_cursor := 0
 
 func _ready() -> void:
-	music_player = AudioStreamPlayer.new()
-	music_player.volume_db = -18.0
-	music_player.stream = music_tracks[music_index]
-	music_player.finished.connect(_on_music_finished)
-	add_child(music_player)
+	for track in music_tracks:
+		var player := AudioStreamPlayer.new()
+		player.volume_db = -18.0
+		player.stream = track
+		player.finished.connect(_on_music_finished.bind(player))
+		add_child(player)
+		music_players.append(player)
+	if not music_players.is_empty():
+		music_player = music_players[0]
 	for _i in range(4):
 		var player := AudioStreamPlayer.new()
 		player.volume_db = -8.0
@@ -33,12 +37,10 @@ func _ready() -> void:
 		sfx_players.append(player)
 	_apply_audio_settings()
 
-func _on_music_finished() -> void:
-	if not music_enabled or not is_instance_valid(music_player):
+func _on_music_finished(player: AudioStreamPlayer) -> void:
+	if not music_enabled or not is_instance_valid(player):
 		return
-	music_index = (music_index + 1) % music_tracks.size()
-	music_player.stream = music_tracks[music_index]
-	music_player.play()
+	player.play()
 
 func configure(settings: Dictionary) -> void:
 	music_enabled = bool(settings.get("music", true))
@@ -47,12 +49,14 @@ func configure(settings: Dictionary) -> void:
 		_apply_audio_settings()
 
 func _apply_audio_settings() -> void:
-	if music_enabled:
-		if not music_player.playing:
-			music_player.stream = music_tracks[music_index]
-			music_player.play()
-	else:
-		music_player.stop()
+	for player in music_players:
+		if not is_instance_valid(player):
+			continue
+		if music_enabled:
+			if not player.playing:
+				player.play()
+		else:
+			player.stop()
 	if not sound_enabled:
 		for p in sfx_players:
 			p.stop()

@@ -16,9 +16,10 @@ func _run() -> void:
 	var audio := Audio.new()
 	root.add_child(audio)
 	await process_frame
-	assert(audio.music_player.playing, "Music starts when enabled")
+	assert(audio.music_players.size() == 2, "Both background music tracks have players")
+	assert(audio.music_players[0].playing and audio.music_players[1].playing, "Both background music tracks play in parallel when enabled")
 	audio.configure({"music": false, "sound": false})
-	assert(not audio.music_player.playing, "Music stops immediately when disabled")
+	assert(not audio.music_players[0].playing and not audio.music_players[1].playing, "Both music tracks stop immediately when disabled")
 	audio.play_event(Audio.Event.MUSIC)
 	audio.play_event(Audio.Event.BLOCKED)
 	assert(not audio.music_enabled and not audio.sound_enabled, "Silent audio hooks respect settings")
