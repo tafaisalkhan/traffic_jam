@@ -264,9 +264,31 @@ func _spawn_intro_path_markers(route: Array[Vector2i]) -> Array[MeshInstance3D]:
 		dot.material_override = mat
 		dot.position = Vector3(world_pt.x, 0.32, world_pt.z)
 		dot.scale = Vector3.ZERO
+		if idx == route.size() - 1:
+			var end_mat := StandardMaterial3D.new()
+			end_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			end_mat.albedo_color = Color(1.0, 0.84, 0.22, 0.96)
+			end_mat.emission_enabled = true
+			end_mat.emission = Color(1.0, 0.84, 0.22)
+			end_mat.emission_energy_multiplier = 2.0
+			end_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			dot.material_override = end_mat
+			dot.position.y = 0.40
 		_intro_path_container.add_child(dot)
 		markers.append(dot)
 	return markers
+
+func _sample_polyline(points: Array[Vector3], t: float) -> Vector3:
+	if points.is_empty():
+		return Vector3.ZERO
+	if points.size() == 1 or t <= 0.0:
+		return points[0]
+	if t >= 1.0:
+		return points[-1]
+	var scaled := t * float(points.size() - 1)
+	var idx := mini(int(scaled), points.size() - 2)
+	var frac := scaled - float(idx)
+	return points[idx].lerp(points[idx + 1], frac)
 
 func _play_intro_sequence() -> void:
 	var token := round_token
@@ -296,12 +318,16 @@ func _play_intro_sequence() -> void:
 	camera.fov = fov
 	var hero_look := Vector3(target_pos.x * level_root.scale.x, 1.25, target_pos.z * level_root.scale.z)
 	var board_size: Vector2i = level.get("board_size", Vector2i(8, 12))
-	var path_end_local := LevelData.cell_to_world(primary_hero.route[-1], board_size) if not primary_hero.route.is_empty() else target_pos
-	var path_end_look := Vector3(path_end_local.x * level_root.scale.x, 0.85, path_end_local.z * level_root.scale.z)
-	var path_mid_look := hero_look.lerp(path_end_look, 0.55)
+	var route_points: Array[Vector3] = [hero_look]
+	for cell in primary_hero.route:
+		var cell_local := LevelData.cell_to_world(cell, board_size)
+		var cell_world := Vector3(cell_local.x * level_root.scale.x, 0.95, cell_local.z * level_root.scale.z)
+		if route_points.is_empty() or route_points[-1].distance_to(cell_world) > 0.05:
+			route_points.append(cell_world)
+	var path_end_look: Vector3 = route_points[-1]
 
-	var cam_focus := hero_look + Vector3(half.x * 0.28, maxf(5.5, half.y * 0.34), maxf(5.5, half.y * 0.42))
-	var cam_path_view := path_mid_look + Vector3(half.x * 0.16, maxf(8.5, half.y * 0.58), maxf(6.5, half.y * 0.45))
+	var cam_walk_offset := Vector3(half.x * 0.24, maxf(5.8, half.y * 0.36), maxf(5.8, half.y * 0.42))
+	var cam_focus := hero_look + cam_walk_offset
 	var end_height := full_size / (2.0 * tan(deg_to_rad(fov * 0.5)))
 	var cam_end := Vector3(0.0, end_height, 0.01)
 
@@ -311,40 +337,46 @@ func _play_intro_sequence() -> void:
 
 	# 1. Focus smoothly on the Ambulance entering the jam
 	_camera_intro_tween = create_tween()
-	_camera_intro_tween.tween_property(primary_hero, "position", target_pos, 1.15).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_camera_intro_tween.tween_property(primary_hero, "position", target_pos, 1.05).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	await _camera_intro_tween.finished
 	if token != round_token:
 		return
 
-	# 2. Highlight the Ambulance's exit path and glide smoothly along the jam & route
+	# 2. Walk smoothly along the Ambulance's entire path all the way to its exit destination
 	var markers := _spawn_intro_path_markers(primary_hero.route)
+	var walk_duration := clampf(float(maxi(1, markers.size())) * 0.14, 1.25, 2.2)
 	for m_idx in range(markers.size()):
 		var dot := markers[m_idx]
 		if is_instance_valid(dot):
+			var target_scale := Vector3(1.6, 1.6, 1.6) if m_idx == markers.size() - 1 else Vector3.ONE
 			var dt := dot.create_tween()
-			dt.tween_interval(float(m_idx) * 0.06)
-			dt.tween_property(dot, "scale", Vector3(1.15, 1.15, 1.15), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-			dt.tween_property(dot, "scale", Vector3.ONE, 0.12)
+			dt.tween_interval(float(m_idx) / float(maxi(1, markers.size())) * walk_duration * 0.85)
+			dt.tween_property(dot, "scale", target_scale * 1.2, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			dt.tween_property(dot, "scale", target_scale, 0.12)
 
 	_camera_intro_tween = create_tween()
-	_camera_intro_tween.set_parallel(true)
-	_camera_intro_tween.tween_property(camera, "position", cam_path_view, 1.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_camera_intro_tween.tween_method(func(t: float) -> void:
 		if is_instance_valid(camera):
-			camera.look_at(hero_look.lerp(path_mid_look, t))
-	, 0.0, 1.0, 1.25).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			var look_pt := _sample_polyline(route_points, t)
+			camera.position = look_pt + cam_walk_offset
+			camera.look_at(look_pt)
+	, 0.0, 1.0, walk_duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	await _camera_intro_tween.finished
 	if token != round_token:
 		return
 
-	# 3. Smoothly pull out to full overhead gameplay framing and fade intro path markers
+	await get_tree().create_timer(0.25).timeout
+	if token != round_token:
+		return
+
+	# 3. Smoothly pull out from the end destination to full overhead gameplay framing
 	_camera_intro_tween = create_tween()
 	_camera_intro_tween.set_parallel(true)
-	_camera_intro_tween.tween_property(camera, "position", cam_end, 1.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_camera_intro_tween.tween_property(camera, "position", cam_end, 1.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	_camera_intro_tween.tween_method(func(t: float) -> void:
 		if is_instance_valid(camera):
-			camera.look_at(path_mid_look.lerp(Vector3.ZERO, t))
-	, 0.0, 1.0, 1.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+			camera.look_at(path_end_look.lerp(Vector3.ZERO, t))
+	, 0.0, 1.0, 1.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	await _camera_intro_tween.finished
 	if token != round_token:
 		return
