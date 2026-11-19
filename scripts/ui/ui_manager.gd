@@ -339,13 +339,22 @@ func show_time_options(coins_available: int, cost: int, expired: bool) -> void:
 		time_reward_button.pressed.connect(time_ad_requested.emit); time_overlay.add_child(time_reward_button)
 	else:
 		time_reward_button = null
-	var exit_button := _tex_button("TRY AGAIN" if expired else "KEEP PLAYING", Vector2(175, 758 if show_ad_btn else 704), Vector2(370, 68), BtnMenuTex)
-	exit_button.add_theme_font_size_override("font_size", 24)
 	if expired:
-		exit_button.pressed.connect(func(): close_time_overlay(); restart_requested.emit())
+		var btn_y := 758 if show_ad_btn else 704
+		var retry_btn := _tex_button("RETRY (%d COINS)" % cost, Vector2(138, btn_y), Vector2(212, 68), BtnGoldTex)
+		retry_btn.add_theme_font_size_override("font_size", 20)
+		retry_btn.disabled = coins_available < cost
+		retry_btn.pressed.connect(func(): close_time_overlay(); restart_requested.emit())
+		time_overlay.add_child(retry_btn)
+		var menu_btn := _tex_button("MAIN MENU", Vector2(370, btn_y), Vector2(212, 68), BtnMenuTex)
+		menu_btn.add_theme_font_size_override("font_size", 20)
+		menu_btn.pressed.connect(func(): close_time_overlay(); main_menu_requested.emit())
+		time_overlay.add_child(menu_btn)
 	else:
+		var exit_button := _tex_button("KEEP PLAYING", Vector2(175, 758 if show_ad_btn else 704), Vector2(370, 68), BtnMenuTex)
+		exit_button.add_theme_font_size_override("font_size", 24)
 		exit_button.pressed.connect(func(): close_time_overlay(); time_options_closed.emit())
-	time_overlay.add_child(exit_button)
+		time_overlay.add_child(exit_button)
 
 func close_time_overlay() -> void:
 	if time_overlay != null and is_instance_valid(time_overlay):
@@ -381,7 +390,9 @@ func show_lives_fail(coins_available: int, cost: int, ad_ready: bool) -> void:
 	else:
 		lives_ad_button = null
 	var retry_y := 782 if show_ad_btn else 730
-	var retry_btn := _tex_button("RETRY", Vector2(138, retry_y), Vector2(212, 66), BtnGoldTex)
+	var retry_btn := _tex_button("RETRY (%d COINS)" % cost, Vector2(138, retry_y), Vector2(212, 66), BtnGoldTex)
+	retry_btn.add_theme_font_size_override("font_size", 20)
+	retry_btn.disabled = coins_available < cost
 	retry_btn.pressed.connect(func(): close_time_overlay(); restart_requested.emit()); time_overlay.add_child(retry_btn)
 	var menu_btn := _tex_button("MAIN MENU", Vector2(370, retry_y), Vector2(212, 66), BtnMenuTex)
 	menu_btn.pressed.connect(func(): close_time_overlay(); main_menu_requested.emit()); time_overlay.add_child(menu_btn)

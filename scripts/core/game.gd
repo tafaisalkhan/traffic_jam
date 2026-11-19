@@ -20,6 +20,7 @@ const TIME_BOOST_COST := 25
 const TIME_BOOST_SECONDS := 15.0
 const MAX_LIVES := 3
 const CONTINUE_LIFE_COST := 25
+const RETRY_COST := 25
 var level: Dictionary
 var road_map: Dictionary = {}
 var occupancy := OccupancyManager.new()
@@ -655,6 +656,12 @@ func _finish_level() -> void:
 	monetization_manager.show_level_end_interstitial()
 
 func _restart() -> void:
+	if (lives_fail_open or time_expired) and not level_manager.spend_coins(RETRY_COST):
+		if lives_fail_open:
+			ui.show_lives_fail(level_manager.coins, CONTINUE_LIFE_COST, monetization_manager.rewarded_ready)
+		elif time_expired:
+			ui.show_time_options(level_manager.coins, TIME_BOOST_COST, true)
+		return
 	load_level(level_manager.get_level(level.id if not level.is_empty() else 1))
 
 func _undo() -> void:

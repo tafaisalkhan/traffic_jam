@@ -71,6 +71,12 @@ func _show_main_menu() -> void:
 
 
 func _restart() -> void:
+	if (lives_fail_open or time_expired) and not level_manager.spend_coins(RETRY_COST):
+		if lives_fail_open:
+			ui.show_lives_fail(level_manager.coins, CONTINUE_LIFE_COST, monetization_manager.rewarded_ready)
+		elif time_expired:
+			ui.show_time_options(level_manager.coins, TIME_BOOST_COST, true)
+		return
 	timer_layer.visible = true
 	if fail_overlay != null:
 		fail_overlay.visible = false
