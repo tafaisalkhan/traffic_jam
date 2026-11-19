@@ -7,6 +7,7 @@ const SAMPLE_RATE := 22050
 const BgMusic1 := preload("res://assets/audio/bg_music1.mp3")
 const BgMusic2 := preload("res://assets/audio/bg_music2.mp3")
 const CarHitSound := preload("res://assets/audio/car_hit.wav")
+const CarTapSound := preload("res://assets/audio/car_tap.mp3")
 const CoinSound := preload("res://assets/audio/coin_sound.wav")
 const LevelCompleteSound := preload("res://assets/audio/level_complete.mp3")
 const LevelFailSound := preload("res://assets/audio/level_fail.mp3")
@@ -67,6 +68,9 @@ func play_event(event: Event) -> void:
 	var player := sfx_players[sfx_cursor]
 	sfx_cursor = (sfx_cursor + 1) % sfx_players.size()
 	match event:
+		Event.VEHICLE_SELECT:
+			player.stream = CarTapSound
+			player.volume_db = -6.0
 		Event.BLOCKED:
 			player.stream = CarHitSound
 			player.volume_db = -6.0
