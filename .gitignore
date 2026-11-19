@@ -7,9 +7,9 @@ android/.gradle/
 android/build/
 build/
 exports/
-assets/
-models/
-ui/
+/assets/
+/models/
+/ui/
 *.glb
 *.png
 *.svg
