@@ -335,7 +335,9 @@ func _play_intro_sequence() -> void:
 	var cam_walk_offset := Vector3(half.x * 0.24, maxf(5.8, half.y * 0.36), maxf(5.8, half.y * 0.42))
 	var cam_focus := hero_look + cam_walk_offset
 	var end_height := full_size / (2.0 * tan(deg_to_rad(fov * 0.5)))
-	var cam_end := Vector3(0.0, end_height, 0.01)
+	var cam_z_off := _gameplay_camera_z_offset()
+	var cam_end := Vector3(0.0, end_height, cam_z_off + 0.01)
+	var cam_end_look := Vector3(0.0, 0.0, cam_z_off)
 
 	camera.position = cam_focus
 	camera.look_at(hero_look)
@@ -381,7 +383,7 @@ func _play_intro_sequence() -> void:
 	_camera_intro_tween.tween_property(camera, "position", cam_end, 1.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	_camera_intro_tween.tween_method(func(t: float) -> void:
 		if is_instance_valid(camera):
-			camera.look_at(path_end_look.lerp(Vector3.ZERO, t))
+			camera.look_at(path_end_look.lerp(cam_end_look, t))
 	, 0.0, 1.0, 1.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	await _camera_intro_tween.finished
 	if token != round_token:

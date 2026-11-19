@@ -270,19 +270,19 @@ func show_gameplay(level_id: int, moves: int, target: int, cars: int, message: S
 	_clear()
 	current_screen = "gameplay"
 	hud = Control.new(); hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); hud.mouse_filter = Control.MOUSE_FILTER_IGNORE; root.add_child(hud)
-	var status_panel := _tex_panel(Vector2(204, 22), Vector2(312, 82), PanelHudTex); hud.add_child(status_panel)
+	var status_panel := _tex_panel(Vector2(204, 50), Vector2(312, 82), PanelHudTex); hud.add_child(status_panel)
 	_add_tex_icon(status_panel, IconLevel, Vector2(20, 23), Vector2(36, 36))
 	var level_label := _label("LEVEL %02d" % level_id, 24, OFF_WHITE); level_label.position = Vector2(62, 18); level_label.size = Vector2(230, 46); level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; level_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; status_panel.add_child(level_label)
 	moves_label = null
-	var pause := _tex_icon_button(IconSettings, Vector2(22, 26), Vector2(58, 58)); pause.pressed.connect(func(): pause_requested.emit()); hud.add_child(pause)
-	var lives_pill := _tex_panel(Vector2(90, 30), Vector2(104, 50), PanelHudTex); hud.add_child(lives_pill)
+	var pause := _tex_icon_button(IconSettings, Vector2(22, 54), Vector2(58, 58)); pause.pressed.connect(func(): pause_requested.emit()); hud.add_child(pause)
+	var lives_pill := _tex_panel(Vector2(90, 58), Vector2(104, 50), PanelHudTex); hud.add_child(lives_pill)
 	lives_label = _label("♥ 3/3", 20, OFF_WHITE); lives_label.position = Vector2(0, 8); lives_label.size = Vector2(104, 34); lives_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; lives_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; lives_pill.add_child(lives_label)
-	var coin_hud := _tex_panel(Vector2(532, 26), Vector2(166, 52), PanelHudTex); hud.add_child(coin_hud)
+	var coin_hud := _tex_panel(Vector2(532, 54), Vector2(166, 52), PanelHudTex); hud.add_child(coin_hud)
 	_add_tex_icon(coin_hud, IconCoin, Vector2(12, 10), Vector2(32, 32))
 	coin_hud_label = _label("%d" % coins, 20, OFF_WHITE); coin_hud_label.position = Vector2(46, 10); coin_hud_label.size = Vector2(108, 32); coin_hud_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; coin_hud_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; coin_hud.add_child(coin_hud_label)
-	time_icon = TextureRect.new(); time_icon.texture = IconTime; time_icon.position = Vector2(534, 86); time_icon.size = Vector2(28, 28); time_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; time_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; time_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE; hud.add_child(time_icon)
-	timer_label = _label("TIME: --", 19, OFF_WHITE); timer_label.position = Vector2(564, 86); timer_label.size = Vector2(134, 30); timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; hud.add_child(timer_label)
-	time_button = _tex_button("+15s", Vector2(552, 122), Vector2(128, 48), BtnGoldTex); time_button.pressed.connect(time_boost_requested.emit); hud.add_child(time_button)
+	time_icon = TextureRect.new(); time_icon.texture = IconTime; time_icon.position = Vector2(534, 114); time_icon.size = Vector2(28, 28); time_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; time_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; time_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE; hud.add_child(time_icon)
+	timer_label = _label("TIME: --", 19, OFF_WHITE); timer_label.position = Vector2(564, 114); timer_label.size = Vector2(134, 30); timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; hud.add_child(timer_label)
+	time_button = _tex_button("+15s", Vector2(552, 150), Vector2(128, 48), BtnGoldTex); time_button.pressed.connect(time_boost_requested.emit); hud.add_child(time_button)
 	update_gameplay(level_id, moves, target, cars, message)
 
 func update_coins(amount: int) -> void:

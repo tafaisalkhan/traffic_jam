@@ -470,14 +470,18 @@ func _compute_fit_camera_size() -> float:
 	var aspect := viewport_size.x / maxf(viewport_size.y, 1.0)
 	if aspect <= 0.0:
 		aspect = 720.0 / 1280.0
-	return maxf(board_height * FIXED_LEVEL_CAMERA_FILL, (board_width / aspect) * 1.08)
+	return maxf(board_height * FIXED_LEVEL_CAMERA_FILL, (board_width / aspect) * 1.02)
+
+func _gameplay_camera_z_offset() -> float:
+	return -_compute_board_half_extents().y * 0.08
 
 func _set_gameplay_camera() -> void:
 	if camera == null:
 		return
+	var z_off := _gameplay_camera_z_offset()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.position = Vector3(0.0, 72.0, 0.01)
-	camera.look_at(Vector3.ZERO)
+	camera.position = Vector3(0.0, 72.0, z_off + 0.01)
+	camera.look_at(Vector3(0.0, 0.0, z_off))
 	level_start_camera_size = clampf(_compute_fit_camera_size(), CAMERA_MIN_SIZE, CAMERA_MAX_SIZE)
 	_set_camera_size(level_start_camera_size)
 
