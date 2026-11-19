@@ -72,4 +72,12 @@ The startup scene is `scenes/gameplay/ambulance_rescue_level.tscn`.
 
 ## Android export
 
-Install Godot's Android SDK/JDK export dependencies, then use **Project → Export → Android**. Export presets and device performance tuning arrive in the Android delivery phase.
+Install Godot's Android SDK/JDK export dependencies, then use **Project → Export → Android**.
+
+## Local Configuration & Assets (Not Committed to Git)
+
+The following local-only files and folders are excluded by `.gitignore` and `.git/hooks/pre-commit` so secrets and binary assets are never pushed to GitHub:
+
+- **AdMob IDs (`res://admob_secrets.json`):** Local JSON file containing `ADMOB_APP_ID`, `ADMOB_BANNER_ID`, `ADMOB_INTERSTITIAL_ID`, and `ADMOB_REWARDED_ID`. Google test IDs are automatically blocked by `scripts/systems/monetization_manager.gd`.
+- **Android Keystore, Username (Alias) & Password (`res://export_presets.cfg` + `*.keystore` / `*.jks`):** Configured locally in **Project → Export → Android → Keystore** (`release`, `release_user`, `release_password`). Package ID: `org.trafficmash.puzzle`.
+- **Assets & 3D Models (`res://assets/`, `res://models/`, `res://ui/`):** Local audio (`bg_music1.mp3`, `bg_music2.mp3`, `car_tap.mp3`, etc.), UI textures, and `.glb` car/house 3D models.
