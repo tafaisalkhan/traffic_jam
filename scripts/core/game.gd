@@ -80,14 +80,14 @@ func _process(delta: float) -> void:
 		_on_time_expired()
 
 func _ready() -> void:
-	EnvironmentItems.request_prewarm()
-	VehicleController.Vehicles.request_prewarm()
 	_create_world()
 	_create_effects()
 	_create_delivery_systems()
 	_create_ui()
 	ui.splash_finished.connect(_on_splash_finished)
 	ui.show_splash()
+	EnvironmentItems.call_deferred("request_prewarm")
+	VehicleController.Vehicles.call_deferred("request_prewarm")
 
 func _on_splash_finished() -> void:
 	monetization_manager.show_menu_banners()

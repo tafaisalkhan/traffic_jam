@@ -66,8 +66,13 @@ func _ready() -> void:
 			plugin.connect("purchase_failed", _on_purchase_failed)
 		if plugin.has_signal("coin_purchase_verified"):
 			plugin.connect("coin_purchase_verified", _on_coin_purchase_verified)
-		if plugin.has_method("restore_purchases"):
-			plugin.call("restore_purchases")
+	call_deferred("_startup_services")
+
+func _startup_services() -> void:
+	if not is_inside_tree():
+		return
+	if plugin != null and plugin.has_method("restore_purchases"):
+		plugin.call("restore_purchases")
 	if ads_allowed:
 		_setup_admob()
 
