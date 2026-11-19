@@ -85,6 +85,7 @@ func play_event(event: Event) -> void:
 		return
 	if event == Event.VEHICLE_EXIT:
 		stop_car_tap()
+		return
 	var player := sfx_players[sfx_cursor]
 	sfx_cursor = (sfx_cursor + 1) % sfx_players.size()
 	match event:
@@ -112,10 +113,8 @@ func play_event(event: Event) -> void:
 		_:
 			var pitch := 520.0
 			var length := 0.10
-			match event:
-				Event.VEHICLE_SELECT: pitch = 570.0
-				Event.VEHICLE_EXIT: pitch = 760.0
-				Event.HINT: pitch = 660.0
+			if event == Event.HINT:
+				pitch = 660.0
 			player.stream = _make_tone(pitch, length)
 			player.volume_db = -14.0
 	player.play()
