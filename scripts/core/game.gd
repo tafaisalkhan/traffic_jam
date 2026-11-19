@@ -86,8 +86,11 @@ func _ready() -> void:
 	_create_ui()
 	ui.splash_finished.connect(_on_splash_finished)
 	ui.show_splash()
-	EnvironmentItems.call_deferred("request_prewarm")
-	VehicleController.Vehicles.call_deferred("request_prewarm")
+	call_deferred("_deferred_prewarm")
+
+func _deferred_prewarm() -> void:
+	EnvironmentItems.request_prewarm()
+	VehicleController.Vehicles.request_prewarm()
 
 func _on_splash_finished() -> void:
 	monetization_manager.show_menu_banners()
