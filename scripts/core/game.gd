@@ -698,6 +698,7 @@ func _create_ui() -> void:
 	ui = UI.new()
 	add_child(ui)
 	ui.configure_progress(level_manager.highest_unlocked, level_manager.stars_by_level, level_manager.coins, Campaign.total_levels())
+	ui.configure_powerups(level_manager.powerups)
 	ui.configure_profile(level_manager.settings, level_manager.selected_cosmetic)
 	ui.configure_monetization(level_manager.ads_removed, monetization_manager.purchase_available())
 	ui.configure_coin_store(monetization_manager.coin_purchase_available())
@@ -737,15 +738,29 @@ func _create_ui() -> void:
 	ui.lives_ad_requested.connect(_watch_lives_ad)
 	ui.in_app_update_action_requested.connect(_on_in_app_update_action)
 	ui.powerup_pack_purchased.connect(_on_powerup_pack_purchased)
+	ui.powerup_refill_requested.connect(_on_powerup_refill_requested)
+	ui.open_upgrades_requested.connect(ui.show_upgrades_dialog)
 
 func _on_powerup_pack_purchased() -> void:
 	if level_manager.spend_coins(150):
 		level_manager.add_powerup("siren", 2)
 		level_manager.add_powerup("remove_car", 2)
 		level_manager.add_powerup("freeze", 2)
+		level_manager.add_powerup("hint", 3)
 		audio_manager.play_event(Audio.Event.COIN)
 		ui.configure_progress(level_manager.highest_unlocked, level_manager.stars_by_level, level_manager.coins, Campaign.total_levels())
-		ui.show_shop()
+		ui.configure_powerups(level_manager.powerups)
+		ui.refresh_upgrades_dialog()
+	else:
+		monetization_manager.request_pack_purchase("coins_1000")
+
+func _on_powerup_refill_requested(kind: String, cost: int, amount: int) -> void:
+	if level_manager.spend_coins(cost):
+		level_manager.add_powerup(kind, amount)
+		audio_manager.play_event(Audio.Event.COIN)
+		ui.configure_progress(level_manager.highest_unlocked, level_manager.stars_by_level, level_manager.coins, Campaign.total_levels())
+		ui.configure_powerups(level_manager.powerups)
+		ui.refresh_upgrades_dialog()
 	else:
 		monetization_manager.request_pack_purchase("coins_1000")
 

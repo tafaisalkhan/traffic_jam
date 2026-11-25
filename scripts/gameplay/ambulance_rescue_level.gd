@@ -5,6 +5,11 @@ const HERO_TYPES := ["ambulance", "fire_truck", "police_car"]
 const SMALL_CIVILIAN_TYPES := ["suv", "compact_sedan", "hatchback", "sports_car", "minivan", "taxi"]
 const BIG_CIVILIAN_TYPES := ["delivery_van", "delivery_truck", "school_bus", "crane_truck"]
 
+const PowerSirenTex = preload("res://assets/ui/power_siren.png")
+const PowerCraneTex = preload("res://assets/ui/power_crane.png")
+const PowerFreezeTex = preload("res://assets/ui/power_freeze.png")
+const PowerHintTex = preload("res://assets/ui/power_hint.png")
+
 enum RescuePhase { INTRO, PLAYING, RESCUING, COMPLETE, FAILED }
 
 var current_stage := 1
@@ -882,16 +887,16 @@ func _create_rescue_hud() -> void:
 	hbox.add_theme_constant_override("separation", 14)
 	powerup_tray.add_child(hbox)
 
-	btn_siren = _create_powerup_btn("🚨", "SIREN", hbox, _on_powerup_siren_pressed)
-	btn_crane = _create_powerup_btn("🏗️", "CRANE", hbox, _on_powerup_crane_pressed)
-	btn_freeze = _create_powerup_btn("⏱️", "FREEZE", hbox, _on_powerup_freeze_pressed)
-	btn_hint = _create_powerup_btn("💡", "HINT", hbox, _on_powerup_hint_pressed)
+	btn_siren = _create_powerup_btn(PowerSirenTex, "SIREN", hbox, _on_powerup_siren_pressed)
+	btn_crane = _create_powerup_btn(PowerCraneTex, "CRANE", hbox, _on_powerup_crane_pressed)
+	btn_freeze = _create_powerup_btn(PowerFreezeTex, "FREEZE", hbox, _on_powerup_freeze_pressed)
+	btn_hint = _create_powerup_btn(PowerHintTex, "HINT", hbox, _on_powerup_hint_pressed)
 	_update_powerup_hud()
 
 
-func _create_powerup_btn(icon: String, title: String, parent: Control, handler: Callable) -> Button:
+func _create_powerup_btn(icon_tex: Texture2D, title: String, parent: Control, handler: Callable) -> Button:
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(146, 88)
+	btn.custom_minimum_size = Vector2(150, 78)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("1e293be6")
 	style.corner_radius_top_left = 16
@@ -900,36 +905,58 @@ func _create_powerup_btn(icon: String, title: String, parent: Control, handler: 
 	style.corner_radius_bottom_right = 16
 	style.border_width_bottom = 4
 	style.border_color = Color("0284c7")
+	style.content_margin_left = 10
+	style.content_margin_right = 10
 	btn.add_theme_stylebox_override("normal", style)
 	var pressed_style := style.duplicate()
 	pressed_style.bg_color = Color("0f172a")
 	btn.add_theme_stylebox_override("pressed", pressed_style)
-	btn.text = "%s\n%s" % [icon, title]
-	btn.add_theme_font_size_override("font_size", 16)
+	btn.icon = icon_tex
+	btn.expand_icon = true
+	btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	btn.add_theme_constant_override("icon_max_width", 42)
+	btn.text = "%s\n..." % title
+	btn.add_theme_font_size_override("font_size", 14)
 	btn.pressed.connect(handler)
+	btn.button_down.connect(func():
+		btn.pivot_offset = btn.size * 0.5
+		var tw := btn.create_tween()
+		tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		tw.tween_property(btn, "scale", Vector2(0.91, 0.91), 0.06)
+	)
+	btn.button_up.connect(func():
+		btn.pivot_offset = btn.size * 0.5
+		var tw := btn.create_tween()
+		tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		tw.tween_property(btn, "scale", Vector2(1.06, 1.06), 0.09)
+		tw.tween_property(btn, "scale", Vector2.ONE, 0.08)
+	)
 	parent.add_child(btn)
 	return btn
 
 
 func _update_powerup_hud() -> void:
 	if btn_siren != null and is_instance_valid(btn_siren):
-		btn_siren.text = "🚨\nSIREN (%d)" % level_manager.get_powerup("siren")
+		btn_siren.text = "SIREN\nx%d" % level_manager.get_powerup("siren")
 	if btn_crane != null and is_instance_valid(btn_crane):
 		if tow_mode:
-			btn_crane.text = "🏗️\nCANCEL"
+			btn_crane.text = "CRANE\nCANCEL"
 		else:
-			btn_crane.text = "🏗️\nCRANE (%d)" % level_manager.get_powerup("remove_car")
+			btn_crane.text = "CRANE\nx%d" % level_manager.get_powerup("remove_car")
 	if btn_freeze != null and is_instance_valid(btn_freeze):
-		btn_freeze.text = "⏱️\nFREEZE (%d)" % level_manager.get_powerup("freeze")
+		btn_freeze.text = "FREEZE\nx%d" % level_manager.get_powerup("freeze")
 	if btn_hint != null and is_instance_valid(btn_hint):
-		btn_hint.text = "💡\nHINT (%d)" % level_manager.get_powerup("hint")
+		btn_hint.text = "HINT\nx%d" % level_manager.get_powerup("hint")
 
 
 func _on_powerup_siren_pressed() -> void:
 	if not playing or rescue_phase != RescuePhase.PLAYING: return
 	var count := level_manager.get_powerup("siren")
 	if count <= 0:
-		ui.show_shop()
+		if ui.has_method("show_upgrades_dialog"):
+			ui.show_upgrades_dialog()
+		else:
+			ui.show_shop()
 		return
 	var lead_hero: VehicleController = null
 	for h in hero_vehicles:
@@ -948,12 +975,12 @@ func _on_powerup_siren_pressed() -> void:
 		var blocker_id := str(blocker.get("blocker_id", ""))
 		for v in vehicles:
 			if is_instance_valid(v) and v.vehicle_id == blocker_id:
-				_update_hud("🚨 SIREN: Clearing blocker %s!" % v.vehicle_type)
+				_update_hud("SIREN: Clearing blocker %s!" % v.vehicle_type)
 				occupancy.release_vehicle(v.vehicle_id, v.route, v.lane_offset)
 				vehicles.erase(v)
 				v.tow_away()
 				break
-	_update_hud("🚨 EMERGENCY SIREN: Road cleared for %s!" % lead_hero.vehicle_type)
+	_update_hud("EMERGENCY SIREN: Road cleared for %s!" % lead_hero.vehicle_type)
 	await get_tree().create_timer(0.4).timeout
 	if is_instance_valid(lead_hero) and lead_hero.state == VehicleController.State.IDLE:
 		_dispatch_hero(lead_hero)
@@ -963,12 +990,15 @@ func _on_powerup_crane_pressed() -> void:
 	if not playing or rescue_phase != RescuePhase.PLAYING: return
 	var count := level_manager.get_powerup("remove_car")
 	if count <= 0:
-		ui.show_shop()
+		if ui.has_method("show_upgrades_dialog"):
+			ui.show_upgrades_dialog()
+		else:
+			ui.show_shop()
 		return
 	tow_mode = not tow_mode
 	_update_powerup_hud()
 	if tow_mode:
-		_update_hud("🏗️ CRANE ACTIVE: Tap ANY civilian car to remove it!")
+		_update_hud("CRANE ACTIVE: Tap ANY civilian car to remove it!")
 	else:
 		_update_hud("Crane mode canceled.")
 
@@ -981,7 +1011,7 @@ func _execute_tow_truck(vehicle: VehicleController) -> void:
 	effects.spawn_exit_sparkles(vehicle.global_position, Color("f59e0b"))
 	occupancy.release_vehicle(vehicle.vehicle_id, vehicle.route, vehicle.lane_offset)
 	vehicles.erase(vehicle)
-	_update_hud("🏗️ TOW TRUCK: Removed %s from the jam!" % vehicle.vehicle_type)
+	_update_hud("TOW TRUCK: Removed %s from the jam!" % vehicle.vehicle_type)
 	vehicle.tow_away()
 
 
@@ -989,14 +1019,17 @@ func _on_powerup_freeze_pressed() -> void:
 	if not playing or rescue_phase != RescuePhase.PLAYING: return
 	var count := level_manager.get_powerup("freeze")
 	if count <= 0:
-		ui.show_shop()
+		if ui.has_method("show_upgrades_dialog"):
+			ui.show_upgrades_dialog()
+		else:
+			ui.show_shop()
 		return
 	level_manager.spend_powerup("freeze")
 	_update_powerup_hud()
 	freeze_timer = 5.0
 	time_remaining += 20.0
 	audio_manager.play_event(Audio.Event.COIN)
-	_update_hud("⏱️ TIME FREEZE! +20s added & timer paused 5s!")
+	_update_hud("TIME FREEZE! +20s added & timer paused 5s!")
 	_update_timer_hud()
 	if timer_panel != null:
 		var st: StyleBoxFlat = timer_panel.get_theme_stylebox("panel") as StyleBoxFlat
@@ -1012,7 +1045,10 @@ func _on_powerup_hint_pressed() -> void:
 	if not playing or rescue_phase != RescuePhase.PLAYING: return
 	var count := level_manager.get_powerup("hint")
 	if count <= 0:
-		ui.show_shop()
+		if ui.has_method("show_upgrades_dialog"):
+			ui.show_upgrades_dialog()
+		else:
+			ui.show_shop()
 		return
 	if active_hint_vehicle != null and is_instance_valid(active_hint_vehicle):
 		active_hint_vehicle.highlight_hint(false)

@@ -34,6 +34,8 @@ signal share_game_requested
 signal convoy_test_requested
 signal in_app_update_action_requested(restart: bool)
 signal powerup_pack_purchased
+signal powerup_refill_requested(kind: String, cost: int, amount: int)
+signal open_upgrades_requested
 
 const Tokens = preload("res://scripts/core/design_tokens.gd")
 const GameIcon = preload("res://assets/ui/traffic_mash_icon_hd.png")
@@ -47,6 +49,10 @@ const IconTime = preload("res://assets/ui/icon_time.png")
 const IconCoin = preload("res://assets/ui/coin.png")
 const IconStar = preload("res://assets/ui/star.png")
 const IconSettings = preload("res://assets/ui/icon_settings.png")
+const PowerSirenTex = preload("res://assets/ui/power_siren.png")
+const PowerCraneTex = preload("res://assets/ui/power_crane.png")
+const PowerFreezeTex = preload("res://assets/ui/power_freeze.png")
+const PowerHintTex = preload("res://assets/ui/power_hint.png")
 const OFF_WHITE := Color("f5f2eb")
 const GameFont = preload("res://assets/fonts/LuckiestGuy-Regular.ttf")
 const PrivacyPolicy = preload("res://scripts/core/privacy_policy.gd")
@@ -71,6 +77,9 @@ var support_overlay: Control
 var daily_reward_overlay: Control
 var update_overlay: Control
 var daily_mission_overlay: Control
+var upgrades_overlay: Control
+var upgrades_body_root: Control
+var powerups: Dictionary = {"siren": 2, "remove_car": 2, "freeze": 2, "hint": 3}
 var stars_by_level: Dictionary = {}
 var coins := 0
 var selected_cosmetic := "classic"
@@ -117,6 +126,10 @@ func configure_progress(highest: int, stars: Dictionary, total_coins: int, total
 	stars_by_level = stars.duplicate()
 	coins = total_coins
 	campaign_total = total_levels
+
+func configure_powerups(data: Dictionary) -> void:
+	for k in data:
+		powerups[k] = int(data[k])
 
 func configure_profile(next_settings: Dictionary, cosmetic: String) -> void:
 	settings = next_settings.duplicate()
@@ -235,18 +248,27 @@ func show_main_menu() -> void:
 	subtitle.position = Vector2(90, 184); subtitle.size = Vector2(540, 32); subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_color_override("font_shadow_color", Color("040c16cc")); subtitle.add_theme_constant_override("shadow_offset_y", 3); root.add_child(subtitle)
 
-	# Left glossy button: SHOP (matches game button style, with READY badge)
-	var shop_btn := _tex_button("SHOP", Vector2(24, 246), Vector2(158, 76), BtnGoldTex)
+	# Left glossy buttons: SHOP and UPGRADES
+	var shop_btn := _tex_button("SHOP", Vector2(24, 246), Vector2(180, 76), BtnGoldTex)
 	shop_btn.add_theme_font_size_override("font_size", 20)
 	shop_btn.pressed.connect(show_shop); root.add_child(shop_btn)
-	_add_tex_icon(shop_btn, IconCoin, Vector2(12, 20), Vector2(34, 34))
+	_add_tex_icon(shop_btn, IconCoin, Vector2(14, 20), Vector2(34, 34))
+	_wire_button_juice(shop_btn)
 	_animate_pop_in(shop_btn, 0.05)
+
+	var upgrades_btn := _tex_button("UPGRADES", Vector2(24, 344), Vector2(180, 76), BtnGoldTex)
+	upgrades_btn.add_theme_font_size_override("font_size", 18)
+	upgrades_btn.pressed.connect(show_upgrades_dialog); root.add_child(upgrades_btn)
+	_add_tex_icon(upgrades_btn, PowerSirenTex, Vector2(12, 18), Vector2(40, 40))
+	_wire_button_juice(upgrades_btn)
+	_animate_pop_in(upgrades_btn, 0.10)
 
 	# Right glossy buttons: aligned 196px wide column matching each other
 	var daily_reward_btn := _tex_button("REWARD", Vector2(500, 246), Vector2(196, 76), BtnGoldTex if daily_reward_can_claim else BtnMenuTex)
 	daily_reward_btn.add_theme_font_size_override("font_size", 19)
 	daily_reward_btn.pressed.connect(show_daily_reward); root.add_child(daily_reward_btn)
 	_add_tex_icon(daily_reward_btn, IconCoin, Vector2(14, 21), Vector2(32, 32))
+	_wire_button_juice(daily_reward_btn)
 	_animate_pop_in(daily_reward_btn, 0.10)
 	if daily_reward_can_claim:
 		var gift_tag := _tex_panel(Vector2(53, 62), Vector2(90, 32), BtnPlayTex)
@@ -261,13 +283,63 @@ func show_main_menu() -> void:
 	daily_btn.add_theme_font_size_override("font_size", 18)
 	daily_btn.pressed.connect(daily_challenge_requested.emit); root.add_child(daily_btn)
 	_add_tex_icon(daily_btn, IconStar, Vector2(14, 21), Vector2(32, 32))
+	_wire_button_juice(daily_btn)
 	_animate_pop_in(daily_btn, 0.16)
+
+	# Main Menu Power-Ups Inventory Strip (Prominently displaying real icons & counts)
+	var power_strip := _tex_panel(Vector2(36, 794), Vector2(648, 126), PanelHudTex)
+	root.add_child(power_strip)
+	_animate_pop_in(power_strip, 0.20)
+
+	var strip_hdr := _label("RESCUE POWER-UPS  •  TAP TO REFILL", 17, Tokens.GOLD)
+	strip_hdr.add_theme_color_override("font_color", Tokens.GOLD)
+	strip_hdr.position = Vector2(0, 10)
+	strip_hdr.size = Vector2(648, 24)
+	strip_hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	power_strip.add_child(strip_hdr)
+
+	var strip_btn := Button.new()
+	strip_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	strip_btn.flat = true
+	strip_btn.pressed.connect(show_upgrades_dialog)
+	_wire_button_juice(strip_btn)
+	power_strip.add_child(strip_btn)
+
+	var p_specs := [
+		["SIREN", PowerSirenTex, int(powerups.get("siren", 0)), Color("38bdf8")],
+		["CRANE", PowerCraneTex, int(powerups.get("remove_car", 0)), Color("fbbf24")],
+		["FREEZE", PowerFreezeTex, int(powerups.get("freeze", 0)), Color("60a5fa")],
+		["HINT", PowerHintTex, int(powerups.get("hint", 0)), Color("34d399")]
+	]
+	for p_idx in range(p_specs.size()):
+		var ps = p_specs[p_idx]
+		var slot_x := 24 + p_idx * 150
+		var slot_box := _pill_box(Vector2(slot_x, 38), Vector2(142, 74), Color("0d1e36"), ps[3], 14)
+		slot_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		power_strip.add_child(slot_box)
+
+		var slot_ic := TextureRect.new()
+		slot_ic.texture = ps[1]
+		slot_ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		slot_ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		slot_ic.position = Vector2(8, 13)
+		slot_ic.size = Vector2(48, 48)
+		slot_ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot_box.add_child(slot_ic)
+
+		var slot_lbl := _label("%s\nx%d" % [ps[0], ps[2]], 16, OFF_WHITE)
+		slot_lbl.position = Vector2(56, 12)
+		slot_lbl.size = Vector2(80, 50)
+		slot_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		slot_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		slot_box.add_child(slot_lbl)
 
 	# Bottom glossy PLAY / LEVEL button
 	var play := _tex_button("LEVEL %d" % highest_unlocked, Vector2(140, 940), Vector2(440, 108), BtnPlayTex)
 	play.add_theme_font_size_override("font_size", 36)
 	play.pivot_offset = Vector2(220, 54)
 	play.pressed.connect(play_requested.emit); root.add_child(play)
+	_wire_button_juice(play)
 	_animate_pulse(play, 1.04, 0.9)
 
 func show_gameplay(level_id: int, moves: int, target: int, cars: int, message: String) -> void:
@@ -323,7 +395,9 @@ func show_time_briefing(level_id: int, seconds: int) -> void:
 	var clock := _label("%d SECONDS" % seconds, 42, OFF_WHITE); clock.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; clock_row.add_child(clock)
 	var guide := _label("Complete this level before time runs out.", 20, OFF_WHITE); guide.position = Vector2(110, 595); guide.size = Vector2(500, 60); guide.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; guide.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; time_overlay.add_child(guide)
 	var start := _tex_button("START LEVEL", Vector2(150, 710), Vector2(420, 76), BtnPlayTex)
+	_wire_button_juice(start)
 	start.pressed.connect(func(): close_time_overlay(); time_start_requested.emit()); time_overlay.add_child(start)
+	_open_popup_animated(time_overlay, panel)
 
 func show_time_options(coins_available: int, cost: int, expired: bool) -> void:
 	close_time_overlay()
@@ -335,11 +409,13 @@ func show_time_options(coins_available: int, cost: int, expired: bool) -> void:
 	var buy := _tex_button("+15s  •  %d COINS" % cost if coins_available >= cost else "NEED %d COINS FOR +15s" % cost, Vector2(135, 548 if show_ad_btn else 578), Vector2(450, 72), BtnPlayTex)
 	buy.add_theme_font_size_override("font_size", 24)
 	buy.disabled = coins_available < cost
+	_wire_button_juice(buy)
 	buy.pressed.connect(time_boost_requested.emit); time_overlay.add_child(buy)
 	if show_ad_btn:
 		time_reward_button = _tex_button("WATCH AD: +50 COINS & +15s" if rewarded_ready else "REWARDED AD LOADING", Vector2(135, 642), Vector2(450, 72), BtnGoldTex)
 		time_reward_button.add_theme_font_size_override("font_size", 22)
 		time_reward_button.disabled = not rewarded_ready
+		_wire_button_juice(time_reward_button)
 		time_reward_button.pressed.connect(time_ad_requested.emit); time_overlay.add_child(time_reward_button)
 	else:
 		time_reward_button = null
@@ -348,32 +424,44 @@ func show_time_options(coins_available: int, cost: int, expired: bool) -> void:
 		var retry_btn := _tex_button("RETRY (%d COINS)" % cost, Vector2(138, btn_y), Vector2(212, 68), BtnGoldTex)
 		retry_btn.add_theme_font_size_override("font_size", 20)
 		retry_btn.disabled = coins_available < cost
+		_wire_button_juice(retry_btn)
 		retry_btn.pressed.connect(func(): close_time_overlay(); restart_requested.emit())
 		time_overlay.add_child(retry_btn)
 		var menu_btn := _tex_button("MAIN MENU", Vector2(370, btn_y), Vector2(212, 68), BtnMenuTex)
 		menu_btn.add_theme_font_size_override("font_size", 20)
+		_wire_button_juice(menu_btn)
 		menu_btn.pressed.connect(func(): close_time_overlay(); main_menu_requested.emit())
 		time_overlay.add_child(menu_btn)
 	else:
 		var exit_button := _tex_button("KEEP PLAYING", Vector2(175, 758 if show_ad_btn else 704), Vector2(370, 68), BtnMenuTex)
 		exit_button.add_theme_font_size_override("font_size", 24)
+		_wire_button_juice(exit_button)
 		exit_button.pressed.connect(func(): close_time_overlay(); time_options_closed.emit())
 		time_overlay.add_child(exit_button)
+	_open_popup_animated(time_overlay, panel)
 
-func close_time_overlay() -> void:
+func close_time_overlay(on_done: Callable = Callable()) -> void:
 	if time_overlay != null and is_instance_valid(time_overlay):
-		time_overlay.queue_free()
-	time_overlay = null
-	time_reward_button = null
+		var panel := time_overlay.get_child(1) as Control if time_overlay.get_child_count() > 1 else null
+		_close_popup_animated(time_overlay, panel, func():
+			time_overlay = null
+			time_reward_button = null
+			if on_done.is_valid(): on_done.call()
+		)
+	else:
+		time_overlay = null
+		time_reward_button = null
+		if on_done.is_valid(): on_done.call()
 
 func show_pause() -> void:
 	var overlay := _overlay()
 	var panel := _tex_panel(Vector2(98, 320), Vector2(524, 540), PanelHudTex); overlay.add_child(panel)
 	var title := _label("PAUSED", 42, OFF_WHITE); title.position = Vector2(125, 360); title.size = Vector2(470, 60); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; overlay.add_child(title)
-	var resume := _tex_button("RESUME", Vector2(160, 450), Vector2(400, 72), BtnPlayTex); resume.add_theme_font_size_override("font_size", 26); resume.pressed.connect(func(): _remove_overlay(overlay); resume_requested.emit()); overlay.add_child(resume)
-	var settings_p := _tex_button("SETTINGS", Vector2(160, 538), Vector2(400, 68), BtnMenuTex); settings_p.add_theme_font_size_override("font_size", 24); settings_p.pressed.connect(func(): _remove_overlay(overlay); show_settings()); overlay.add_child(settings_p)
-	var restart := _tex_button("RESTART", Vector2(160, 622), Vector2(400, 68), BtnGoldTex); restart.add_theme_font_size_override("font_size", 24); restart.pressed.connect(func(): _remove_overlay(overlay); restart_requested.emit()); overlay.add_child(restart)
-	var menu := _tex_button("MAIN MENU", Vector2(160, 706), Vector2(400, 68), BtnMenuTex); menu.add_theme_font_size_override("font_size", 24); menu.pressed.connect(func(): _remove_overlay(overlay); main_menu_requested.emit()); overlay.add_child(menu)
+	var resume := _tex_button("RESUME", Vector2(160, 450), Vector2(400, 72), BtnPlayTex); resume.add_theme_font_size_override("font_size", 26); _wire_button_juice(resume); resume.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): resume_requested.emit())); overlay.add_child(resume)
+	var settings_p := _tex_button("SETTINGS", Vector2(160, 538), Vector2(400, 68), BtnMenuTex); settings_p.add_theme_font_size_override("font_size", 24); _wire_button_juice(settings_p); settings_p.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): show_settings())); overlay.add_child(settings_p)
+	var restart := _tex_button("RESTART", Vector2(160, 622), Vector2(400, 68), BtnGoldTex); restart.add_theme_font_size_override("font_size", 24); _wire_button_juice(restart); restart.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): restart_requested.emit())); overlay.add_child(restart)
+	var menu := _tex_button("MAIN MENU", Vector2(160, 706), Vector2(400, 68), BtnMenuTex); menu.add_theme_font_size_override("font_size", 24); _wire_button_juice(menu); menu.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): main_menu_requested.emit())); overlay.add_child(menu)
+	_open_popup_animated(overlay, panel)
 
 func show_lives_fail(coins_available: int, cost: int, ad_ready: bool) -> void:
 	close_time_overlay()
@@ -387,19 +475,23 @@ func show_lives_fail(coins_available: int, cost: int, ad_ready: bool) -> void:
 	var c_icon := TextureRect.new(); c_icon.texture = IconCoin; c_icon.custom_minimum_size = Vector2(32, 32); c_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; c_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; c_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER; coin_row.add_child(c_icon)
 	var c_lbl := _label("COINS: %d" % coins_available, 22, OFF_WHITE); c_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; coin_row.add_child(c_lbl)
 	var cont_btn := _tex_button("CONTINUE (%d COINS)" % cost, Vector2(138, 608 if show_ad_btn else 622), Vector2(444, 70), BtnPlayTex)
-	cont_btn.disabled = coins_available < cost; cont_btn.pressed.connect(lives_continue_requested.emit); time_overlay.add_child(cont_btn)
+	cont_btn.disabled = coins_available < cost; _wire_button_juice(cont_btn); cont_btn.pressed.connect(lives_continue_requested.emit); time_overlay.add_child(cont_btn)
 	if show_ad_btn:
 		lives_ad_button = _tex_button("WATCH AD (+50 COINS)" if ad_ready else "AD LOADING...", Vector2(138, 694), Vector2(444, 68), BtnGoldTex)
-		lives_ad_button.disabled = not ad_ready; lives_ad_button.pressed.connect(lives_ad_requested.emit); time_overlay.add_child(lives_ad_button)
+		lives_ad_button.disabled = not ad_ready; _wire_button_juice(lives_ad_button); lives_ad_button.pressed.connect(lives_ad_requested.emit); time_overlay.add_child(lives_ad_button)
 	else:
 		lives_ad_button = null
 	var retry_y := 782 if show_ad_btn else 730
 	var retry_btn := _tex_button("RETRY (%d COINS)" % cost, Vector2(138, retry_y), Vector2(212, 66), BtnGoldTex)
 	retry_btn.add_theme_font_size_override("font_size", 20)
 	retry_btn.disabled = coins_available < cost
+	_wire_button_juice(retry_btn)
 	retry_btn.pressed.connect(func(): close_time_overlay(); restart_requested.emit()); time_overlay.add_child(retry_btn)
 	var menu_btn := _tex_button("MAIN MENU", Vector2(370, retry_y), Vector2(212, 66), BtnMenuTex)
+	menu_btn.add_theme_font_size_override("font_size", 20)
+	_wire_button_juice(menu_btn)
 	menu_btn.pressed.connect(func(): close_time_overlay(); main_menu_requested.emit()); time_overlay.add_child(menu_btn)
+	_open_popup_animated(time_overlay, panel)
 
 func show_complete(moves: int, target: int, earned_stars := -1) -> void:
 	_clear()
@@ -451,9 +543,10 @@ func show_complete(moves: int, target: int, earned_stars := -1) -> void:
 				pt.tween_property(hud_coin_icon, "scale", Vector2.ONE, 0.09)
 		)
 
-	var next := _tex_button("NEXT LEVEL", Vector2(148, 646), Vector2(424, 76), BtnPlayTex); next.pressed.connect(next_requested.emit); overlay.add_child(next)
-	var retry := _tex_button("RETRY", Vector2(148, 756), Vector2(204, 68), BtnGoldTex); retry.pressed.connect(restart_requested.emit); overlay.add_child(retry)
-	var main_btn := _tex_button("MAIN MENU", Vector2(368, 756), Vector2(204, 68), BtnMenuTex); main_btn.pressed.connect(main_menu_requested.emit); overlay.add_child(main_btn)
+	var next := _tex_button("NEXT LEVEL", Vector2(148, 646), Vector2(424, 76), BtnPlayTex); _wire_button_juice(next); next.pressed.connect(next_requested.emit); overlay.add_child(next)
+	var retry := _tex_button("RETRY", Vector2(148, 756), Vector2(204, 68), BtnGoldTex); _wire_button_juice(retry); retry.pressed.connect(restart_requested.emit); overlay.add_child(retry)
+	var main_btn := _tex_button("MAIN MENU", Vector2(368, 756), Vector2(204, 68), BtnMenuTex); _wire_button_juice(main_btn); main_btn.pressed.connect(main_menu_requested.emit); overlay.add_child(main_btn)
+	_open_popup_animated(overlay, panel)
 
 func show_level_select() -> void:
 	_clear()
@@ -555,15 +648,24 @@ func show_privacy_popup() -> void:
 	var policy := Label.new(); policy.text = PrivacyPolicy.TEXT; policy.custom_minimum_size.x = 520; policy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; policy.add_theme_font_size_override("font_size", 20); policy.add_theme_color_override("font_color", Color("e6f4ff")); scroll.add_child(policy)
 	var continue_button := _tex_button("CONTINUE", Vector2(115, 954), Vector2(490, 72), BtnPlayTex)
 	continue_button.add_theme_font_size_override("font_size", 26)
-	continue_button.pressed.connect(func(): close_privacy_popup(); privacy_acknowledged.emit()); privacy_overlay.add_child(continue_button)
+	_wire_button_juice(continue_button)
+	continue_button.pressed.connect(func(): close_privacy_popup(func(): privacy_acknowledged.emit())); privacy_overlay.add_child(continue_button)
 	var later_button := _tex_button("NOT NOW", Vector2(115, 1042), Vector2(490, 62), BtnMenuTex)
 	later_button.add_theme_font_size_override("font_size", 22)
-	later_button.pressed.connect(func(): close_privacy_popup(); privacy_dismissed.emit()); privacy_overlay.add_child(later_button)
+	_wire_button_juice(later_button)
+	later_button.pressed.connect(func(): close_privacy_popup(func(): privacy_dismissed.emit())); privacy_overlay.add_child(later_button)
+	_open_popup_animated(privacy_overlay, card)
 
-func close_privacy_popup() -> void:
+func close_privacy_popup(on_done: Callable = Callable()) -> void:
 	if privacy_overlay != null and is_instance_valid(privacy_overlay):
-		privacy_overlay.queue_free()
-	privacy_overlay = null
+		var card := privacy_overlay.get_child(1) as Control if privacy_overlay.get_child_count() > 1 else null
+		_close_popup_animated(privacy_overlay, card, func():
+			privacy_overlay = null
+			if on_done.is_valid(): on_done.call()
+		)
+	else:
+		privacy_overlay = null
+		if on_done.is_valid(): on_done.call()
 
 func show_collection() -> void:
 	_clear()
@@ -599,6 +701,7 @@ func _clear() -> void:
 	reward_button = null; lives_ad_button = null
 	time_overlay = null; time_reward_button = null; timer_label = null; time_button = null
 	privacy_overlay = null; support_overlay = null; daily_reward_overlay = null
+	update_overlay = null; daily_mission_overlay = null; upgrades_overlay = null
 
 func _add_backdrop(color: Color) -> void:
 	var rect := ColorRect.new(); rect.color = color; rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.add_child(rect)
@@ -614,11 +717,98 @@ func _add_icon(position: Vector2, size: Vector2) -> void:
 	root.add_child(icon)
 
 func _overlay() -> Control:
-	var overlay := Control.new(); overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	var shade := ColorRect.new(); shade.color = Color("08121c66"); shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); overlay.add_child(shade); root.add_child(overlay); return overlay
+	var overlay := Control.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	var shade := ColorRect.new()
+	shade.name = "Dim"
+	shade.color = Color("08121c99")
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(shade)
+	root.add_child(overlay)
+	return overlay
 
-func _remove_overlay(overlay: Control) -> void:
-	overlay.queue_free()
+func _open_popup_animated(overlay: Control, card: Control = null, delay := 0.0) -> void:
+	if not is_instance_valid(overlay):
+		return
+	overlay.visible = true
+	var dim: ColorRect = overlay.get_node_or_null("Dim")
+	if dim == null and overlay.get_child_count() > 0 and overlay.get_child(0) is ColorRect:
+		dim = overlay.get_child(0) as ColorRect
+	if dim != null:
+		dim.modulate.a = 0.0
+		var dtw := dim.create_tween()
+		dtw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		if delay > 0.0:
+			dtw.tween_interval(delay)
+		dtw.tween_property(dim, "modulate:a", 1.0, 0.16)
+
+	if card == null and overlay.get_child_count() > 1:
+		card = overlay.get_child(1) as Control
+
+	if card != null and is_instance_valid(card):
+		card.pivot_offset = card.size * 0.5
+		card.scale = Vector2(0.4, 0.4)
+		card.modulate.a = 0.0
+		var tw := card.create_tween()
+		tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		if delay > 0.0:
+			tw.tween_interval(delay)
+		tw.tween_property(card, "modulate:a", 1.0, 0.12)
+		tw.parallel().tween_property(card, "scale", Vector2(1.06, 0.95), 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(card, "scale", Vector2(0.98, 1.02), 0.09)
+		tw.tween_property(card, "scale", Vector2.ONE, 0.08)
+
+func _close_popup_animated(overlay: Control, card: Control = null, on_complete: Callable = Callable()) -> void:
+	if not is_instance_valid(overlay) or not overlay.visible:
+		if on_complete.is_valid():
+			on_complete.call()
+		return
+	var dim: ColorRect = overlay.get_node_or_null("Dim")
+	if dim == null and overlay.get_child_count() > 0 and overlay.get_child(0) is ColorRect:
+		dim = overlay.get_child(0) as ColorRect
+
+	if card == null and overlay.get_child_count() > 1:
+		card = overlay.get_child(1) as Control
+
+	if card != null and is_instance_valid(card):
+		card.pivot_offset = card.size * 0.5
+		var tw := card.create_tween()
+		tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		tw.tween_property(card, "scale", Vector2(1.05, 1.05), 0.06)
+		tw.tween_property(card, "scale", Vector2(0.35, 0.35), 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		tw.parallel().tween_property(card, "modulate:a", 0.0, 0.14)
+		if dim != null and is_instance_valid(dim):
+			tw.parallel().tween_property(dim, "modulate:a", 0.0, 0.14)
+		tw.tween_callback(func():
+			if is_instance_valid(overlay):
+				overlay.queue_free()
+			if on_complete.is_valid():
+				on_complete.call()
+		)
+	else:
+		if is_instance_valid(overlay):
+			overlay.queue_free()
+		if on_complete.is_valid():
+			on_complete.call()
+
+func _remove_overlay(overlay: Control, card: Control = null, on_complete: Callable = Callable()) -> void:
+	_close_popup_animated(overlay, card, on_complete)
+
+func _wire_button_juice(btn: Button) -> void:
+	btn.button_down.connect(func():
+		btn.pivot_offset = btn.size * 0.5
+		var tw := btn.create_tween()
+		tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		tw.tween_property(btn, "scale", Vector2(0.91, 0.91), 0.06)
+	)
+	btn.button_up.connect(func():
+		btn.pivot_offset = btn.size * 0.5
+		var tw := btn.create_tween()
+		tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		tw.tween_property(btn, "scale", Vector2(1.06, 1.06), 0.09)
+		tw.tween_property(btn, "scale", Vector2.ONE, 0.08)
+	)
 
 func _panel(position: Vector2, size: Vector2, color: Color, radius: int) -> Panel:
 	var panel := Panel.new(); panel.position = position; panel.size = size
@@ -691,10 +881,10 @@ func show_daily_reward() -> void:
 	daily_reward_overlay = _overlay()
 	var card := _tex_panel(Vector2(44, 150), Vector2(632, 920), PanelHudTex)
 	daily_reward_overlay.add_child(card)
-	_animate_pop_in(card)
 
 	var close_btn := _tex_button("X", Vector2(616, 134), Vector2(68, 68), BtnGoldTex)
 	close_btn.add_theme_font_size_override("font_size", 28)
+	_wire_button_juice(close_btn)
 	close_btn.pressed.connect(close_daily_reward)
 	daily_reward_overlay.add_child(close_btn)
 
@@ -721,16 +911,22 @@ func show_daily_reward() -> void:
 	var claim_btn := _tex_button(claim_text, Vector2(146, 756), Vector2(340, 92), BtnPlayTex if daily_reward_can_claim else BtnMenuTex)
 	claim_btn.add_theme_font_size_override("font_size", 30)
 	claim_btn.disabled = not daily_reward_can_claim
+	_wire_button_juice(claim_btn)
 	claim_btn.pressed.connect(func():
 		daily_reward_claim_requested.emit()
 		close_daily_reward()
 	)
 	card.add_child(claim_btn)
+	_open_popup_animated(daily_reward_overlay, card)
 
 func close_daily_reward() -> void:
 	if daily_reward_overlay != null and is_instance_valid(daily_reward_overlay):
-		daily_reward_overlay.queue_free()
-	daily_reward_overlay = null
+		var card := daily_reward_overlay.get_child(1) as Control if daily_reward_overlay.get_child_count() > 1 else null
+		_close_popup_animated(daily_reward_overlay, card, func():
+			daily_reward_overlay = null
+		)
+	else:
+		daily_reward_overlay = null
 
 func _add_daily_reward_tile(parent: Control, pos: Vector2, size: Vector2, day_num: int) -> void:
 	var claimed := (day_num < daily_reward_day) or (day_num == daily_reward_day and not daily_reward_can_claim)
@@ -764,10 +960,8 @@ func show_home_support_popup(action_idx: int = -1) -> void:
 	var pick := action_idx if action_idx in [0, 1, 2] else randi() % 3
 	support_overlay = _overlay()
 
-	# Matched to game theme (PanelHudTex + BtnGoldTex + BtnPlayTex + readable large fonts)
 	var card := _tex_panel(Vector2(45, 330), Vector2(630, 610), PanelHudTex)
 	support_overlay.add_child(card)
-	_animate_pop_in(card)
 
 	var header_pill := _tex_panel(Vector2(115, 294), Vector2(490, 88), BtnGoldTex)
 	support_overlay.add_child(header_pill)
@@ -779,10 +973,12 @@ func show_home_support_popup(action_idx: int = -1) -> void:
 
 	var close_btn := _tex_button("X", Vector2(616, 314), Vector2(64, 64), BtnMenuTex)
 	close_btn.add_theme_font_size_override("font_size", 26)
+	_wire_button_juice(close_btn)
 	close_btn.pressed.connect(func():
 		if support_overlay != null and is_instance_valid(support_overlay):
-			support_overlay.queue_free()
-		support_overlay = null
+			_close_popup_animated(support_overlay, card, func(): support_overlay = null)
+		else:
+			support_overlay = null
 	)
 	support_overlay.add_child(close_btn)
 
@@ -810,18 +1006,24 @@ func show_home_support_popup(action_idx: int = -1) -> void:
 	var cta_texts := ["RATE GAME", "SHARE GAME", "COFFEE • $1.99"]
 	var cta := _tex_button(cta_texts[pick], Vector2(95, 444), Vector2(440, 92), BtnPlayTex)
 	cta.add_theme_font_size_override("font_size", 28)
+	_wire_button_juice(cta)
 	cta.pressed.connect(func():
-		if pick == 0:
-			rate_app_requested.emit()
-		elif pick == 1:
-			share_game_requested.emit()
-		else:
-			coffee_purchase_requested.emit()
+		var action_to_emit := pick
 		if support_overlay != null and is_instance_valid(support_overlay):
-			support_overlay.queue_free()
-		support_overlay = null
+			_close_popup_animated(support_overlay, card, func():
+				support_overlay = null
+				if action_to_emit == 0: rate_app_requested.emit()
+				elif action_to_emit == 1: share_game_requested.emit()
+				else: coffee_purchase_requested.emit()
+			)
+		else:
+			support_overlay = null
+			if action_to_emit == 0: rate_app_requested.emit()
+			elif action_to_emit == 1: share_game_requested.emit()
+			else: coffee_purchase_requested.emit()
 	)
 	card.add_child(cta)
+	_open_popup_animated(support_overlay, card)
 
 
 func show_in_app_update_popup(is_downloaded: bool = false) -> void:
@@ -831,7 +1033,6 @@ func show_in_app_update_popup(is_downloaded: bool = false) -> void:
 
 	var card := _tex_panel(Vector2(45, 330), Vector2(630, 560), PanelHudTex)
 	update_overlay.add_child(card)
-	_animate_pop_in(card)
 
 	var header_pill := _tex_panel(Vector2(100, 290), Vector2(520, 88), BtnGoldTex)
 	update_overlay.add_child(header_pill)
@@ -843,10 +1044,12 @@ func show_in_app_update_popup(is_downloaded: bool = false) -> void:
 
 	var close_btn := _tex_button("X", Vector2(616, 314), Vector2(64, 64), BtnMenuTex)
 	close_btn.add_theme_font_size_override("font_size", 26)
+	_wire_button_juice(close_btn)
 	close_btn.pressed.connect(func():
 		if update_overlay != null and is_instance_valid(update_overlay):
-			update_overlay.queue_free()
-		update_overlay = null
+			_close_popup_animated(update_overlay, card, func(): update_overlay = null)
+		else:
+			update_overlay = null
 	)
 	update_overlay.add_child(close_btn)
 
@@ -860,13 +1063,20 @@ func show_in_app_update_popup(is_downloaded: bool = false) -> void:
 	var btn_title := "RESTART APP" if is_downloaded else "UPDATE NOW"
 	var action_btn := _tex_button(btn_title, Vector2(95, 390), Vector2(440, 88), BtnPlayTex)
 	action_btn.add_theme_font_size_override("font_size", 28)
+	_wire_button_juice(action_btn)
 	action_btn.pressed.connect(func():
-		in_app_update_action_requested.emit(is_downloaded)
+		var is_down := is_downloaded
 		if update_overlay != null and is_instance_valid(update_overlay):
-			update_overlay.queue_free()
-		update_overlay = null
+			_close_popup_animated(update_overlay, card, func():
+				update_overlay = null
+				in_app_update_action_requested.emit(is_down)
+			)
+		else:
+			update_overlay = null
+			in_app_update_action_requested.emit(is_down)
 	)
 	card.add_child(action_btn)
+	_open_popup_animated(update_overlay, card)
 
 
 func show_daily_challenge_dialog() -> void:
@@ -876,7 +1086,6 @@ func show_daily_challenge_dialog() -> void:
 
 	var card := _tex_panel(Vector2(45, 300), Vector2(630, 620), PanelHudTex)
 	daily_mission_overlay.add_child(card)
-	_animate_pop_in(card)
 
 	var header_pill := _tex_panel(Vector2(100, 260), Vector2(520, 88), BtnGoldTex)
 	daily_mission_overlay.add_child(header_pill)
@@ -887,10 +1096,12 @@ func show_daily_challenge_dialog() -> void:
 
 	var close_btn := _tex_button("X", Vector2(616, 280), Vector2(64, 64), BtnMenuTex)
 	close_btn.add_theme_font_size_override("font_size", 26)
+	_wire_button_juice(close_btn)
 	close_btn.pressed.connect(func():
 		if daily_mission_overlay != null and is_instance_valid(daily_mission_overlay):
-			daily_mission_overlay.queue_free()
-		daily_mission_overlay = null
+			_close_popup_animated(daily_mission_overlay, card, func(): daily_mission_overlay = null)
+		else:
+			daily_mission_overlay = null
 	)
 	daily_mission_overlay.add_child(close_btn)
 
@@ -902,13 +1113,19 @@ func show_daily_challenge_dialog() -> void:
 
 	var start_btn := _tex_button("START MISSION", Vector2(95, 420), Vector2(440, 92), BtnPlayTex)
 	start_btn.add_theme_font_size_override("font_size", 30)
+	_wire_button_juice(start_btn)
 	start_btn.pressed.connect(func():
 		if daily_mission_overlay != null and is_instance_valid(daily_mission_overlay):
-			daily_mission_overlay.queue_free()
-		daily_mission_overlay = null
-		daily_challenge_requested.emit()
+			_close_popup_animated(daily_mission_overlay, card, func():
+				daily_mission_overlay = null
+				daily_challenge_requested.emit()
+			)
+		else:
+			daily_mission_overlay = null
+			daily_challenge_requested.emit()
 	)
 	card.add_child(start_btn)
+	_open_popup_animated(daily_mission_overlay, card)
 
 func show_shop() -> void:
 	_clear()
@@ -961,59 +1178,210 @@ func show_shop() -> void:
 		p_title.position = Vector2(124, 52); p_title.size = Vector2(260, 48); p_card.add_child(p_title)
 		var p_btn := _tex_button(p[2], Vector2(400, 38), Vector2(204, 76), BtnPlayTex)
 		p_btn.add_theme_font_size_override("font_size", 26)
+		_wire_button_juice(p_btn)
 		p_btn.pressed.connect(shop_pack_requested.emit.bind(p[0])); p_card.add_child(p_btn)
 
-	# Rescue Power-Up Pack (2 Sirens, 2 Cranes, 2 Freezes for 150 coins)
-	var rescue_card := _tex_panel(Vector2.ZERO, Vector2(636, 152), PanelHudTex)
-	rescue_card.custom_minimum_size = Vector2(636, 152)
-	vbox.add_child(rescue_card)
-	_add_tex_icon(rescue_card, IconStar, Vector2(28, 38), Vector2(76, 76))
-	var r_title := _label("RESCUE PACK", 26, Tokens.GOLD); r_title.add_theme_color_override("font_color", Tokens.GOLD)
-	r_title.position = Vector2(120, 36); r_title.size = Vector2(270, 38); rescue_card.add_child(r_title)
-	var r_sub := _label("+2 Siren, +2 Crane, +2 Freeze", 18, OFF_WHITE)
-	r_sub.position = Vector2(120, 78); r_sub.size = Vector2(270, 32); rescue_card.add_child(r_sub)
-	var r_btn := _tex_button("150 COINS", Vector2(400, 38), Vector2(204, 76), BtnPlayTex)
-	r_btn.add_theme_font_size_override("font_size", 22)
-	r_btn.pressed.connect(func(): powerup_pack_purchased.emit()); rescue_card.add_child(r_btn)
 
-	# Remove Ads ($2.99)
-	var ads_card := _tex_panel(Vector2.ZERO, Vector2(636, 152), PanelHudTex)
-	ads_card.custom_minimum_size = Vector2(636, 152)
-	vbox.add_child(ads_card)
-	var ads_title := _label("REMOVE ALL ADS", 26, Color("4ade80")); ads_title.add_theme_color_override("font_color", Color("4ade80"))
-	ads_title.position = Vector2(40, 52); ads_title.size = Vector2(340, 48); ads_card.add_child(ads_title)
-	var ads_btn := _tex_button("$2.99" if not ads_removed else "OWNED ✓", Vector2(400, 38), Vector2(204, 76), BtnMenuTex if ads_removed else BtnPlayTex)
-	ads_btn.add_theme_font_size_override("font_size", 24)
-	ads_btn.disabled = ads_removed
-	ads_btn.pressed.connect(remove_ads_requested.emit); ads_card.add_child(ads_btn)
+func show_upgrades_dialog() -> void:
+	if upgrades_overlay != null and is_instance_valid(upgrades_overlay):
+		upgrades_overlay.queue_free()
+	upgrades_overlay = _overlay()
 
-	# Buy Developer a Coffee ($1.99)
-	var cof_card := _tex_panel(Vector2.ZERO, Vector2(636, 152), PanelHudTex)
-	cof_card.custom_minimum_size = Vector2(636, 152)
-	vbox.add_child(cof_card)
-	var cof_title := _label("BUY DEV A COFFEE", 26, Tokens.GOLD); cof_title.add_theme_color_override("font_color", Tokens.GOLD)
-	cof_title.position = Vector2(40, 36); cof_title.size = Vector2(340, 38); cof_card.add_child(cof_title)
-	var cof_sub := _label("Support game updates!", 18, OFF_WHITE)
-	cof_sub.position = Vector2(40, 78); cof_sub.size = Vector2(340, 32); cof_card.add_child(cof_sub)
-	var cof_btn := _tex_button("$1.99", Vector2(400, 38), Vector2(204, 76), BtnGoldTex)
-	cof_btn.add_theme_font_size_override("font_size", 24)
-	cof_btn.pressed.connect(coffee_purchase_requested.emit); cof_card.add_child(cof_btn)
+	var card := _tex_panel(Vector2(38, 170), Vector2(644, 900), PanelHudTex)
+	upgrades_overlay.add_child(card)
+
+	var header_pill := _tex_panel(Vector2(88, 130), Vector2(544, 84), BtnGoldTex)
+	upgrades_overlay.add_child(header_pill)
+
+	var header_lbl := _label("RESCUE POWER-UPS", 30, Tokens.INK)
+	header_lbl.add_theme_color_override("font_color", Tokens.INK)
+	header_lbl.position = Vector2(0, 12)
+	header_lbl.size = Vector2(544, 40)
+	header_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header_pill.add_child(header_lbl)
+
+	var sub_lbl := _label("Spend Coins to Refill Charges", 17, Color("4a3b10"))
+	sub_lbl.add_theme_color_override("font_color", Color("4a3b10"))
+	sub_lbl.position = Vector2(0, 48)
+	sub_lbl.size = Vector2(544, 24)
+	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header_pill.add_child(sub_lbl)
+
+	var close_btn := _tex_button("X", Vector2(610, 140), Vector2(62, 62), BtnMenuTex)
+	close_btn.add_theme_font_size_override("font_size", 26)
+	_wire_button_juice(close_btn)
+	close_btn.pressed.connect(func():
+		close_upgrades_dialog()
+	)
+	upgrades_overlay.add_child(close_btn)
+
+	# Coin balance pill at top of card
+	var coin_bar := _tex_panel(Vector2(212, 54), Vector2(220, 50), PanelHudTex)
+	card.add_child(coin_bar)
+	_add_tex_icon(coin_bar, IconCoin, Vector2(12, 9), Vector2(32, 32))
+	var coin_txt := _label("%d COINS" % coins, 20, Tokens.GOLD)
+	coin_txt.add_theme_color_override("font_color", Tokens.GOLD)
+	coin_txt.position = Vector2(50, 9); coin_txt.size = Vector2(160, 32); coin_txt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	coin_bar.add_child(coin_txt)
+
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(24, 116)
+	scroll.size = Vector2(596, 756)
+	card.add_child(scroll)
+
+	upgrades_body_root = VBoxContainer.new()
+	upgrades_body_root.custom_minimum_size = Vector2(576, 0)
+	upgrades_body_root.add_theme_constant_override("separation", 14)
+	scroll.add_child(upgrades_body_root)
+
+	_render_upgrades_list()
+	_open_popup_animated(upgrades_overlay, card)
+
+
+func close_upgrades_dialog() -> void:
+	if upgrades_overlay != null and is_instance_valid(upgrades_overlay):
+		var card := upgrades_overlay.get_child(1) as Control if upgrades_overlay.get_child_count() > 1 else null
+		_close_popup_animated(upgrades_overlay, card, func():
+			upgrades_overlay = null
+			if current_screen == "menu":
+				show_main_menu()
+		)
+	else:
+		upgrades_overlay = null
+
+
+func refresh_upgrades_dialog() -> void:
+	if upgrades_overlay != null and is_instance_valid(upgrades_overlay) and upgrades_body_root != null and is_instance_valid(upgrades_body_root):
+		_render_upgrades_list()
+
+
+func _render_upgrades_list() -> void:
+	if upgrades_body_root == null or not is_instance_valid(upgrades_body_root):
+		return
+	for c in upgrades_body_root.get_children():
+		c.queue_free()
+
+	var powerup_items := [
+		{
+			"id": "siren",
+			"title": "EMERGENCY SIREN",
+			"desc": "Instantly clears civilian cars blocking the emergency rescue route",
+			"icon": PowerSirenTex,
+			"cost": 50,
+			"amount": 2,
+			"count": int(powerups.get("siren", 0))
+		},
+		{
+			"id": "remove_car",
+			"title": "TOW CRANE",
+			"desc": "Tap any civilian car to lift & tow it away from the traffic jam",
+			"icon": PowerCraneTex,
+			"cost": 60,
+			"amount": 2,
+			"count": int(powerups.get("remove_car", 0))
+		},
+		{
+			"id": "freeze",
+			"title": "TIME FREEZE",
+			"desc": "Adds +20 seconds and pauses timer countdown for 5 seconds",
+			"icon": PowerFreezeTex,
+			"cost": 50,
+			"amount": 2,
+			"count": int(powerups.get("freeze", 0))
+		},
+		{
+			"id": "hint",
+			"title": "HINT BEACON",
+			"desc": "Bouncing golden beacon highlights the exact vehicle to move next",
+			"icon": PowerHintTex,
+			"cost": 40,
+			"amount": 3,
+			"count": int(powerups.get("hint", 0))
+		}
+	]
+
+	for item in powerup_items:
+		var row_card := _tex_panel(Vector2.ZERO, Vector2(576, 126), PanelHudTex)
+		row_card.custom_minimum_size = Vector2(576, 126)
+		upgrades_body_root.add_child(row_card)
+
+		# Icon with frame
+		var icon_frame := _pill_box(Vector2(16, 18), Vector2(90, 90), Color("0b182d"), Color("38bdf8"), 14)
+		row_card.add_child(icon_frame)
+		var ic := TextureRect.new()
+		ic.texture = item["icon"]
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.position = Vector2(13, 13)
+		ic.size = Vector2(64, 64)
+		icon_frame.add_child(ic)
+
+		# Info vbox
+		var t := _label("%s (x%d)" % [item["title"], item["count"]], 22, Tokens.GOLD)
+		t.add_theme_color_override("font_color", Tokens.GOLD)
+		t.position = Vector2(118, 16); t.size = Vector2(270, 30)
+		row_card.add_child(t)
+
+		var d := _label(item["desc"], 15, OFF_WHITE)
+		d.position = Vector2(118, 50); d.size = Vector2(270, 66); d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		row_card.add_child(d)
+
+		var buy_btn := _tex_button("%d COINS\n(+%d)" % [item["cost"], item["amount"]], Vector2(404, 24), Vector2(156, 78), BtnPlayTex)
+		buy_btn.add_theme_font_size_override("font_size", 16)
+		_wire_button_juice(buy_btn)
+		var item_id: String = item["id"]
+		var item_cost: int = item["cost"]
+		var item_amt: int = item["amount"]
+		buy_btn.pressed.connect(func():
+			powerup_refill_requested.emit(item_id, item_cost, item_amt)
+		)
+		row_card.add_child(buy_btn)
+
+	# Best Value Bundle Card at the bottom
+	var bundle_card := _tex_panel(Vector2.ZERO, Vector2(576, 136), PanelHudTex)
+	bundle_card.custom_minimum_size = Vector2(576, 136)
+	upgrades_body_root.add_child(bundle_card)
+
+	var b_icon_frame := _pill_box(Vector2(16, 20), Vector2(90, 96), Color("261b07"), Tokens.GOLD, 14)
+	bundle_card.add_child(b_icon_frame)
+	_add_tex_icon(b_icon_frame, IconStar, Vector2(15, 18), Vector2(60, 60))
+
+	var b_title := _label("RESCUE PACK (BEST VALUE)", 22, Tokens.GOLD)
+	b_title.add_theme_color_override("font_color", Tokens.GOLD)
+	b_title.position = Vector2(118, 20); b_title.size = Vector2(270, 30)
+	bundle_card.add_child(b_title)
+
+	var b_sub := _label("+2 Siren, +2 Crane, +2 Freeze, +3 Hints", 16, OFF_WHITE)
+	b_sub.position = Vector2(118, 56); b_sub.size = Vector2(270, 60); b_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bundle_card.add_child(b_sub)
+
+	var b_btn := _tex_button("150 COINS\n(ALL 4)", Vector2(404, 28), Vector2(156, 80), BtnGoldTex)
+	b_btn.add_theme_font_size_override("font_size", 18)
+	_wire_button_juice(b_btn)
+	b_btn.pressed.connect(func():
+		powerup_pack_purchased.emit()
+	)
+	bundle_card.add_child(b_btn)
+
 
 func _animate_pulse(node: Control, max_scale := 1.06, duration := 0.8) -> void:
 	var t := node.create_tween().set_loops()
 	t.tween_property(node, "scale", Vector2(max_scale, max_scale), duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	t.tween_property(node, "scale", Vector2.ONE, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
+
 func _animate_pop_in(node: Control, delay := 0.0) -> void:
 	node.pivot_offset = node.size * 0.5
-	node.scale = Vector2(0.86, 0.86)
+	node.scale = Vector2(0.4, 0.4)
 	node.modulate.a = 0.0
 	var t := node.create_tween()
+	t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	if delay > 0.0:
 		t.tween_interval(delay)
-	t.set_parallel(true)
-	t.tween_property(node, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	t.tween_property(node, "modulate:a", 1.0, 0.22)
+	t.tween_property(node, "modulate:a", 1.0, 0.12)
+	t.parallel().tween_property(node, "scale", Vector2(1.06, 0.95), 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	t.tween_property(node, "scale", Vector2(0.98, 1.02), 0.09)
+	t.tween_property(node, "scale", Vector2.ONE, 0.08)
 
 func _pill_box(pos: Vector2, size: Vector2, bg: Color, border: Color, radius := 24) -> Panel:
 	var panel := Panel.new()
