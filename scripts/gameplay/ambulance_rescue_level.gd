@@ -28,6 +28,14 @@ var timer_panel: PanelContainer
 var timer_label: Label
 var add_time_button: Button
 var fail_overlay: Control
+var powerup_tray: PanelContainer
+var btn_siren: Button
+var btn_crane: Button
+var btn_freeze: Button
+var btn_hint: Button
+var freeze_timer := 0.0
+var tow_mode := false
+var active_hint_vehicle: VehicleController = null
 
 
 func _ready() -> void:
@@ -118,6 +126,11 @@ func load_level(data: Dictionary, completed: Array[String] = []) -> void:
 	pending_heroes.clear()
 	siren_pairs.clear()
 	heroes_rescued = 0
+	freeze_timer = 0.0
+	tow_mode = false
+	if active_hint_vehicle != null and is_instance_valid(active_hint_vehicle):
+		active_hint_vehicle.highlight_hint(false)
+		active_hint_vehicle = null
 	time_remaining = preserved_time if is_convoy_transition else float(data.get("time_limit", BASE_TIME_LIMIT))
 	if fail_overlay != null:
 		fail_overlay.visible = false
@@ -131,6 +144,7 @@ func load_level(data: Dictionary, completed: Array[String] = []) -> void:
 	ui.set_time_controls_visible(false)
 	_setup_hero_visuals()
 	_update_timer_hud()
+	_update_powerup_hud()
 	if is_convoy_transition:
 		is_convoy_transition = false
 		_set_gameplay_camera()
@@ -156,10 +170,29 @@ func _process(delta: float) -> void:
 			camera.position = camera.position.lerp(target_pos, clampf(delta * 2.4, 0.0, 1.0))
 
 	if rescue_phase == RescuePhase.PLAYING and playing:
-		time_remaining = maxf(0.0, time_remaining - delta)
+		if freeze_timer > 0.0:
+			freeze_timer = maxf(0.0, freeze_timer - delta)
+		else:
+			time_remaining = maxf(0.0, time_remaining - delta)
+			if time_remaining <= 0.0:
+				_on_time_expired()
 		_update_timer_hud()
-		if time_remaining <= 0.0:
-			_on_time_expired()
+
+
+func _handle_gesture(start: Vector2, finish: Vector2) -> void:
+	if tow_mode:
+		var vehicle := _vehicle_at_screen(start)
+		if vehicle != null:
+			if not _is_hero(vehicle.vehicle_id):
+				_execute_tow_truck(vehicle)
+				return
+			else:
+				_update_hud("Cannot tow emergency unit! Tap a civilian car.")
+				return
+	if active_hint_vehicle != null and is_instance_valid(active_hint_vehicle):
+		active_hint_vehicle.highlight_hint(false)
+		active_hint_vehicle = null
+	super._handle_gesture(start, finish)
 
 
 func _try_move(vehicle: VehicleController) -> void:
@@ -819,16 +852,204 @@ func _create_rescue_hud() -> void:
 	retry_btn.pressed.connect(_restart)
 	vbox.add_child(retry_btn)
 
+	# Power-up HUD Dock Tray
+	powerup_tray = PanelContainer.new()
+	powerup_tray.theme = shared_theme
+	powerup_tray.anchor_left = 0.5
+	powerup_tray.anchor_right = 0.5
+	powerup_tray.anchor_top = 1.0
+	powerup_tray.anchor_bottom = 1.0
+	powerup_tray.offset_left = -330.0
+	powerup_tray.offset_right = 330.0
+	powerup_tray.offset_top = -140.0
+	powerup_tray.offset_bottom = -30.0
+	var tray_style := StyleBoxFlat.new()
+	tray_style.bg_color = Color("0d172af0")
+	tray_style.border_width_left = 2
+	tray_style.border_width_top = 2
+	tray_style.border_width_right = 2
+	tray_style.border_width_bottom = 2
+	tray_style.border_color = Color("38bdf8")
+	tray_style.corner_radius_top_left = 22
+	tray_style.corner_radius_top_right = 22
+	tray_style.corner_radius_bottom_left = 22
+	tray_style.corner_radius_bottom_right = 22
+	powerup_tray.add_theme_stylebox_override("panel", tray_style)
+	timer_layer.add_child(powerup_tray)
+
+	var hbox := HBoxContainer.new()
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 14)
+	powerup_tray.add_child(hbox)
+
+	btn_siren = _create_powerup_btn("🚨", "SIREN", hbox, _on_powerup_siren_pressed)
+	btn_crane = _create_powerup_btn("🏗️", "CRANE", hbox, _on_powerup_crane_pressed)
+	btn_freeze = _create_powerup_btn("⏱️", "FREEZE", hbox, _on_powerup_freeze_pressed)
+	btn_hint = _create_powerup_btn("💡", "HINT", hbox, _on_powerup_hint_pressed)
+	_update_powerup_hud()
+
+
+func _create_powerup_btn(icon: String, title: String, parent: Control, handler: Callable) -> Button:
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(146, 88)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("1e293be6")
+	style.corner_radius_top_left = 16
+	style.corner_radius_top_right = 16
+	style.corner_radius_bottom_left = 16
+	style.corner_radius_bottom_right = 16
+	style.border_width_bottom = 4
+	style.border_color = Color("0284c7")
+	btn.add_theme_stylebox_override("normal", style)
+	var pressed_style := style.duplicate()
+	pressed_style.bg_color = Color("0f172a")
+	btn.add_theme_stylebox_override("pressed", pressed_style)
+	btn.text = "%s\n%s" % [icon, title]
+	btn.add_theme_font_size_override("font_size", 16)
+	btn.pressed.connect(handler)
+	parent.add_child(btn)
+	return btn
+
+
+func _update_powerup_hud() -> void:
+	if btn_siren != null and is_instance_valid(btn_siren):
+		btn_siren.text = "🚨\nSIREN (%d)" % level_manager.get_powerup("siren")
+	if btn_crane != null and is_instance_valid(btn_crane):
+		if tow_mode:
+			btn_crane.text = "🏗️\nCANCEL"
+		else:
+			btn_crane.text = "🏗️\nCRANE (%d)" % level_manager.get_powerup("remove_car")
+	if btn_freeze != null and is_instance_valid(btn_freeze):
+		btn_freeze.text = "⏱️\nFREEZE (%d)" % level_manager.get_powerup("freeze")
+	if btn_hint != null and is_instance_valid(btn_hint):
+		btn_hint.text = "💡\nHINT (%d)" % level_manager.get_powerup("hint")
+
+
+func _on_powerup_siren_pressed() -> void:
+	if not playing or rescue_phase != RescuePhase.PLAYING: return
+	var count := level_manager.get_powerup("siren")
+	if count <= 0:
+		ui.show_shop()
+		return
+	var lead_hero: VehicleController = null
+	for h in hero_vehicles:
+		if is_instance_valid(h) and h.state == VehicleController.State.IDLE:
+			lead_hero = h
+			break
+	if lead_hero == null:
+		_update_hud("No idle emergency vehicle on the road!")
+		return
+	level_manager.spend_powerup("siren")
+	_update_powerup_hud()
+	audio_manager.play_event(Audio.Event.AMBULANCE_SIREN)
+	effects.spawn_confetti(lead_hero.global_position)
+	var blocker := _find_first_blocker(lead_hero.vehicle_id, lead_hero.route)
+	if not blocker.is_empty():
+		var blocker_id := str(blocker.get("blocker_id", ""))
+		for v in vehicles:
+			if is_instance_valid(v) and v.vehicle_id == blocker_id:
+				_update_hud("🚨 SIREN: Clearing blocker %s!" % v.vehicle_type)
+				occupancy.release_vehicle(v.vehicle_id, v.route, v.lane_offset)
+				vehicles.erase(v)
+				v.tow_away()
+				break
+	_update_hud("🚨 EMERGENCY SIREN: Road cleared for %s!" % lead_hero.vehicle_type)
+	await get_tree().create_timer(0.4).timeout
+	if is_instance_valid(lead_hero) and lead_hero.state == VehicleController.State.IDLE:
+		_dispatch_hero(lead_hero)
+
+
+func _on_powerup_crane_pressed() -> void:
+	if not playing or rescue_phase != RescuePhase.PLAYING: return
+	var count := level_manager.get_powerup("remove_car")
+	if count <= 0:
+		ui.show_shop()
+		return
+	tow_mode = not tow_mode
+	_update_powerup_hud()
+	if tow_mode:
+		_update_hud("🏗️ CRANE ACTIVE: Tap ANY civilian car to remove it!")
+	else:
+		_update_hud("Crane mode canceled.")
+
+
+func _execute_tow_truck(vehicle: VehicleController) -> void:
+	tow_mode = false
+	level_manager.spend_powerup("remove_car")
+	_update_powerup_hud()
+	audio_manager.play_event(Audio.Event.VEHICLE_SELECT)
+	effects.spawn_exit_sparkles(vehicle.global_position, Color("f59e0b"))
+	occupancy.release_vehicle(vehicle.vehicle_id, vehicle.route, vehicle.lane_offset)
+	vehicles.erase(vehicle)
+	_update_hud("🏗️ TOW TRUCK: Removed %s from the jam!" % vehicle.vehicle_type)
+	vehicle.tow_away()
+
+
+func _on_powerup_freeze_pressed() -> void:
+	if not playing or rescue_phase != RescuePhase.PLAYING: return
+	var count := level_manager.get_powerup("freeze")
+	if count <= 0:
+		ui.show_shop()
+		return
+	level_manager.spend_powerup("freeze")
+	_update_powerup_hud()
+	freeze_timer = 5.0
+	time_remaining += 20.0
+	audio_manager.play_event(Audio.Event.COIN)
+	_update_hud("⏱️ TIME FREEZE! +20s added & timer paused 5s!")
+	_update_timer_hud()
+	if timer_panel != null:
+		var st: StyleBoxFlat = timer_panel.get_theme_stylebox("panel") as StyleBoxFlat
+		if st != null:
+			var orig_col := st.border_color
+			st.border_color = Color("38bdf8")
+			var tw := create_tween()
+			tw.tween_interval(2.0)
+			tw.tween_property(st, "border_color", orig_col, 1.0)
+
+
+func _on_powerup_hint_pressed() -> void:
+	if not playing or rescue_phase != RescuePhase.PLAYING: return
+	var count := level_manager.get_powerup("hint")
+	if count <= 0:
+		ui.show_shop()
+		return
+	if active_hint_vehicle != null and is_instance_valid(active_hint_vehicle):
+		active_hint_vehicle.highlight_hint(false)
+		active_hint_vehicle = null
+	var chosen: VehicleController = null
+	for h in hero_vehicles:
+		if is_instance_valid(h) and h.state == VehicleController.State.IDLE and _is_route_free_of_stationary(h.vehicle_id, h.route):
+			chosen = h
+			break
+	if chosen == null:
+		for v in vehicles:
+			if is_instance_valid(v) and v.state == VehicleController.State.IDLE and _is_route_free_of_stationary(v.vehicle_id, v.route):
+				chosen = v
+				break
+	if chosen != null:
+		level_manager.spend_powerup("hint")
+		_update_powerup_hud()
+		active_hint_vehicle = chosen
+		chosen.highlight_hint(true)
+		audio_manager.play_event(Audio.Event.HINT)
+		_update_hud("💡 HINT: Tap the highlighted vehicle to advance!")
+	else:
+		_update_hud("No direct path clear — use Tow Crane or Siren!")
+
 
 func _update_timer_hud() -> void:
 	if timer_label == null:
 		return
 	var secs := ceili(time_remaining)
+	var freeze_str := " ❄️" if freeze_timer > 0.0 else ""
 	if convoy_jams_total > 1:
-		timer_label.text = "LVL %d | JAM %d/%d | %ds" % [current_stage, convoy_jam_index, convoy_jams_total, secs]
+		timer_label.text = "LVL %d | JAM %d/%d | %ds%s" % [current_stage, convoy_jam_index, convoy_jams_total, secs, freeze_str]
 	else:
-		timer_label.text = "LVL %d | RESCUED %d/%d | %ds" % [current_stage, heroes_rescued, heroes_total, secs]
-	if time_remaining <= 10.0:
+		timer_label.text = "LVL %d | RESCUED %d/%d | %ds%s" % [current_stage, heroes_rescued, heroes_total, secs, freeze_str]
+	if freeze_timer > 0.0:
+		timer_label.add_theme_color_override("font_color", Color("38bdf8"))
+	elif time_remaining <= 10.0:
 		timer_label.add_theme_color_override("font_color", Color("f87171"))
 	elif time_remaining <= 20.0:
 		timer_label.add_theme_color_override("font_color", Color("fbbf24"))

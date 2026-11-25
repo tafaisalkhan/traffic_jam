@@ -146,6 +146,8 @@ func _create_delivery_systems() -> void:
 	monetization_manager.no_fill_changed.connect(_on_no_fill_changed)
 	monetization_manager.pack_purchase_verified.connect(_on_pack_purchase_verified)
 	monetization_manager.coffee_purchased.connect(_on_coffee_purchased)
+	monetization_manager.in_app_update_available.connect(func(avail: bool): if avail: ui.show_in_app_update_popup(false))
+	monetization_manager.in_app_update_downloaded.connect(func(): ui.show_in_app_update_popup(true))
 	add_child(monetization_manager)
 
 func load_level(data: Dictionary, completed: Array[String] = []) -> void:
@@ -733,6 +735,25 @@ func _create_ui() -> void:
 	ui.time_options_closed.connect(_on_time_options_closed)
 	ui.lives_continue_requested.connect(_continue_with_coins)
 	ui.lives_ad_requested.connect(_watch_lives_ad)
+	ui.in_app_update_action_requested.connect(_on_in_app_update_action)
+	ui.powerup_pack_purchased.connect(_on_powerup_pack_purchased)
+
+func _on_powerup_pack_purchased() -> void:
+	if level_manager.spend_coins(150):
+		level_manager.add_powerup("siren", 2)
+		level_manager.add_powerup("remove_car", 2)
+		level_manager.add_powerup("freeze", 2)
+		audio_manager.play_event(Audio.Event.COIN)
+		ui.configure_progress(level_manager.highest_unlocked, level_manager.stars_by_level, level_manager.coins, Campaign.total_levels())
+		ui.show_shop()
+	else:
+		monetization_manager.request_pack_purchase("coins_1000")
+
+func _on_in_app_update_action(restart: bool) -> void:
+	if restart:
+		monetization_manager.complete_in_app_update()
+	else:
+		monetization_manager.start_in_app_update()
 
 func _request_play() -> void:
 	if level_manager.privacy_acknowledged:

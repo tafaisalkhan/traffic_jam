@@ -32,6 +32,8 @@ signal coffee_purchase_requested
 signal rate_app_requested
 signal share_game_requested
 signal convoy_test_requested
+signal in_app_update_action_requested(restart: bool)
+signal powerup_pack_purchased
 
 const Tokens = preload("res://scripts/core/design_tokens.gd")
 const GameIcon = preload("res://assets/ui/traffic_mash_icon_hd.png")
@@ -67,6 +69,8 @@ var hints_count := 3
 var no_fill_active := false
 var support_overlay: Control
 var daily_reward_overlay: Control
+var update_overlay: Control
+var daily_mission_overlay: Control
 var stars_by_level: Dictionary = {}
 var coins := 0
 var selected_cosmetic := "classic"
@@ -687,6 +691,7 @@ func show_daily_reward() -> void:
 	daily_reward_overlay = _overlay()
 	var card := _tex_panel(Vector2(44, 150), Vector2(632, 920), PanelHudTex)
 	daily_reward_overlay.add_child(card)
+	_animate_pop_in(card)
 
 	var close_btn := _tex_button("X", Vector2(616, 134), Vector2(68, 68), BtnGoldTex)
 	close_btn.add_theme_font_size_override("font_size", 28)
@@ -711,7 +716,8 @@ func show_daily_reward() -> void:
 		_add_daily_reward_tile(card, pos, Vector2(168, 170), day_num)
 	_add_daily_reward_tile(card, Vector2(44, 548), Vector2(536, 156), week_start + 6)
 
-	var claim_text := "CLAIM +%d" % (daily_reward_day * 10) if daily_reward_can_claim else "CLAIMED TODAY ✓"
+	var claim_amt := 20 * (1 + ((daily_reward_day - 1) % 7))
+	var claim_text := "CLAIM +%d" % claim_amt if daily_reward_can_claim else "CLAIMED TODAY ✓"
 	var claim_btn := _tex_button(claim_text, Vector2(146, 756), Vector2(340, 92), BtnPlayTex if daily_reward_can_claim else BtnMenuTex)
 	claim_btn.add_theme_font_size_override("font_size", 30)
 	claim_btn.disabled = not daily_reward_can_claim
@@ -746,7 +752,8 @@ func _add_daily_reward_tile(parent: Control, pos: Vector2, size: Vector2, day_nu
 		tile.add_child(check_lbl)
 	else:
 		_add_tex_icon(tile, IconCoin, Vector2(size.x * 0.5 - 28, 52), Vector2(56, 56))
-		var amt_lbl := _label("+%d" % (day_num * 10), 26, Tokens.GOLD)
+		var tile_amt := 20 * (1 + ((day_num - 1) % 7))
+		var amt_lbl := _label("+%d" % tile_amt, 26, Tokens.GOLD)
 		amt_lbl.add_theme_color_override("font_color", Tokens.GOLD)
 		amt_lbl.position = Vector2(0, size.y - 44); amt_lbl.size = Vector2(size.x, 34); amt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		tile.add_child(amt_lbl)
@@ -760,6 +767,7 @@ func show_home_support_popup(action_idx: int = -1) -> void:
 	# Matched to game theme (PanelHudTex + BtnGoldTex + BtnPlayTex + readable large fonts)
 	var card := _tex_panel(Vector2(45, 330), Vector2(630, 610), PanelHudTex)
 	support_overlay.add_child(card)
+	_animate_pop_in(card)
 
 	var header_pill := _tex_panel(Vector2(115, 294), Vector2(490, 88), BtnGoldTex)
 	support_overlay.add_child(header_pill)
@@ -815,6 +823,93 @@ func show_home_support_popup(action_idx: int = -1) -> void:
 	)
 	card.add_child(cta)
 
+
+func show_in_app_update_popup(is_downloaded: bool = false) -> void:
+	if update_overlay != null and is_instance_valid(update_overlay):
+		update_overlay.queue_free()
+	update_overlay = _overlay()
+
+	var card := _tex_panel(Vector2(45, 330), Vector2(630, 560), PanelHudTex)
+	update_overlay.add_child(card)
+	_animate_pop_in(card)
+
+	var header_pill := _tex_panel(Vector2(100, 290), Vector2(520, 88), BtnGoldTex)
+	update_overlay.add_child(header_pill)
+	var title_text := "UPDATE READY!" if is_downloaded else "NEW UPDATE!"
+	var header_lbl := _label(title_text, 34, Tokens.INK)
+	header_lbl.add_theme_color_override("font_color", Tokens.INK)
+	header_lbl.position = Vector2(0, 18); header_lbl.size = Vector2(520, 52); header_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header_pill.add_child(header_lbl)
+
+	var close_btn := _tex_button("X", Vector2(616, 314), Vector2(64, 64), BtnMenuTex)
+	close_btn.add_theme_font_size_override("font_size", 26)
+	close_btn.pressed.connect(func():
+		if update_overlay != null and is_instance_valid(update_overlay):
+			update_overlay.queue_free()
+		update_overlay = null
+	)
+	update_overlay.add_child(close_btn)
+
+	_add_tex_icon(card, IconLevel, Vector2(255, 110), Vector2(120, 120))
+
+	var desc_text := "A new version of City Rescue Puzzle has finished downloading!\nRestart now to enjoy the latest levels & improvements." if is_downloaded else "A fresh version of City Rescue Puzzle is available on Google Play!\nUpdate now for brand new levels & features."
+	var desc_lbl := _label(desc_text, 24, OFF_WHITE)
+	desc_lbl.position = Vector2(40, 250); desc_lbl.size = Vector2(550, 110); desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	card.add_child(desc_lbl)
+
+	var btn_title := "RESTART APP" if is_downloaded else "UPDATE NOW"
+	var action_btn := _tex_button(btn_title, Vector2(95, 390), Vector2(440, 88), BtnPlayTex)
+	action_btn.add_theme_font_size_override("font_size", 28)
+	action_btn.pressed.connect(func():
+		in_app_update_action_requested.emit(is_downloaded)
+		if update_overlay != null and is_instance_valid(update_overlay):
+			update_overlay.queue_free()
+		update_overlay = null
+	)
+	card.add_child(action_btn)
+
+
+func show_daily_challenge_dialog() -> void:
+	if daily_mission_overlay != null and is_instance_valid(daily_mission_overlay):
+		daily_mission_overlay.queue_free()
+	daily_mission_overlay = _overlay()
+
+	var card := _tex_panel(Vector2(45, 300), Vector2(630, 620), PanelHudTex)
+	daily_mission_overlay.add_child(card)
+	_animate_pop_in(card)
+
+	var header_pill := _tex_panel(Vector2(100, 260), Vector2(520, 88), BtnGoldTex)
+	daily_mission_overlay.add_child(header_pill)
+	var header_lbl := _label("DAILY MISSION", 34, Tokens.INK)
+	header_lbl.add_theme_color_override("font_color", Tokens.INK)
+	header_lbl.position = Vector2(0, 18); header_lbl.size = Vector2(520, 52); header_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header_pill.add_child(header_lbl)
+
+	var close_btn := _tex_button("X", Vector2(616, 280), Vector2(64, 64), BtnMenuTex)
+	close_btn.add_theme_font_size_override("font_size", 26)
+	close_btn.pressed.connect(func():
+		if daily_mission_overlay != null and is_instance_valid(daily_mission_overlay):
+			daily_mission_overlay.queue_free()
+		daily_mission_overlay = null
+	)
+	daily_mission_overlay.add_child(close_btn)
+
+	_add_tex_icon(card, IconTime, Vector2(255, 110), Vector2(120, 120))
+
+	var desc_lbl := _label("Clear today's high-speed emergency jam!\nReward: +150 BONUS COINS\nStreak: %d Days Active" % daily_streak, 26, OFF_WHITE)
+	desc_lbl.position = Vector2(40, 250); desc_lbl.size = Vector2(550, 120); desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	card.add_child(desc_lbl)
+
+	var start_btn := _tex_button("START MISSION", Vector2(95, 420), Vector2(440, 92), BtnPlayTex)
+	start_btn.add_theme_font_size_override("font_size", 30)
+	start_btn.pressed.connect(func():
+		if daily_mission_overlay != null and is_instance_valid(daily_mission_overlay):
+			daily_mission_overlay.queue_free()
+		daily_mission_overlay = null
+		daily_challenge_requested.emit()
+	)
+	card.add_child(start_btn)
+
 func show_shop() -> void:
 	_clear()
 	current_screen = "shop"
@@ -867,6 +962,42 @@ func show_shop() -> void:
 		var p_btn := _tex_button(p[2], Vector2(400, 38), Vector2(204, 76), BtnPlayTex)
 		p_btn.add_theme_font_size_override("font_size", 26)
 		p_btn.pressed.connect(shop_pack_requested.emit.bind(p[0])); p_card.add_child(p_btn)
+
+	# Rescue Power-Up Pack (2 Sirens, 2 Cranes, 2 Freezes for 150 coins)
+	var rescue_card := _tex_panel(Vector2.ZERO, Vector2(636, 152), PanelHudTex)
+	rescue_card.custom_minimum_size = Vector2(636, 152)
+	vbox.add_child(rescue_card)
+	_add_tex_icon(rescue_card, IconStar, Vector2(28, 38), Vector2(76, 76))
+	var r_title := _label("RESCUE PACK", 26, Tokens.GOLD); r_title.add_theme_color_override("font_color", Tokens.GOLD)
+	r_title.position = Vector2(120, 36); r_title.size = Vector2(270, 38); rescue_card.add_child(r_title)
+	var r_sub := _label("+2 Siren, +2 Crane, +2 Freeze", 18, OFF_WHITE)
+	r_sub.position = Vector2(120, 78); r_sub.size = Vector2(270, 32); rescue_card.add_child(r_sub)
+	var r_btn := _tex_button("150 COINS", Vector2(400, 38), Vector2(204, 76), BtnPlayTex)
+	r_btn.add_theme_font_size_override("font_size", 22)
+	r_btn.pressed.connect(func(): powerup_pack_purchased.emit()); rescue_card.add_child(r_btn)
+
+	# Remove Ads ($2.99)
+	var ads_card := _tex_panel(Vector2.ZERO, Vector2(636, 152), PanelHudTex)
+	ads_card.custom_minimum_size = Vector2(636, 152)
+	vbox.add_child(ads_card)
+	var ads_title := _label("REMOVE ALL ADS", 26, Color("4ade80")); ads_title.add_theme_color_override("font_color", Color("4ade80"))
+	ads_title.position = Vector2(40, 52); ads_title.size = Vector2(340, 48); ads_card.add_child(ads_title)
+	var ads_btn := _tex_button("$2.99" if not ads_removed else "OWNED ✓", Vector2(400, 38), Vector2(204, 76), BtnMenuTex if ads_removed else BtnPlayTex)
+	ads_btn.add_theme_font_size_override("font_size", 24)
+	ads_btn.disabled = ads_removed
+	ads_btn.pressed.connect(remove_ads_requested.emit); ads_card.add_child(ads_btn)
+
+	# Buy Developer a Coffee ($1.99)
+	var cof_card := _tex_panel(Vector2.ZERO, Vector2(636, 152), PanelHudTex)
+	cof_card.custom_minimum_size = Vector2(636, 152)
+	vbox.add_child(cof_card)
+	var cof_title := _label("BUY DEV A COFFEE", 26, Tokens.GOLD); cof_title.add_theme_color_override("font_color", Tokens.GOLD)
+	cof_title.position = Vector2(40, 36); cof_title.size = Vector2(340, 38); cof_card.add_child(cof_title)
+	var cof_sub := _label("Support game updates!", 18, OFF_WHITE)
+	cof_sub.position = Vector2(40, 78); cof_sub.size = Vector2(340, 32); cof_card.add_child(cof_sub)
+	var cof_btn := _tex_button("$1.99", Vector2(400, 38), Vector2(204, 76), BtnGoldTex)
+	cof_btn.add_theme_font_size_override("font_size", 24)
+	cof_btn.pressed.connect(coffee_purchase_requested.emit); cof_card.add_child(cof_btn)
 
 func _animate_pulse(node: Control, max_scale := 1.06, duration := 0.8) -> void:
 	var t := node.create_tween().set_loops()

@@ -157,6 +157,52 @@ func _spawn_smoke_puff(delay := 0.0) -> void:
 func _face_cell(next_cell: Vector2i) -> void:
 	rotation.y = _angle_for(next_cell - route[0])
 
+var hint_beacon: Node3D
+
+func tow_away() -> void:
+	if state == State.EXITED: return
+	state = State.MOVING
+	_set_motion_effects(false)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(self, "position:y", position.y + 7.5, 0.70).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "scale", Vector3.ZERO, 0.70).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "rotation:x", 0.40, 0.70)
+	tween.chain().tween_callback(func():
+		state = State.EXITED
+		exited.emit(self)
+		queue_free()
+	)
+
+func highlight_hint(enable: bool) -> void:
+	if enable:
+		if hint_beacon == null:
+			hint_beacon = Node3D.new()
+			var arrow := MeshInstance3D.new()
+			var cmesh := CylinderMesh.new()
+			cmesh.top_radius = 0.0
+			cmesh.bottom_radius = 0.32
+			cmesh.height = 0.60
+			arrow.mesh = cmesh
+			arrow.rotation.x = PI
+			arrow.position.y = 1.7
+			var mat := StandardMaterial3D.new()
+			mat.albedo_color = Color("facc15")
+			mat.emission_enabled = true
+			mat.emission = Color("facc15")
+			mat.emission_energy_multiplier = 2.0
+			arrow.material_override = mat
+			hint_beacon.add_child(arrow)
+			add_child(hint_beacon)
+			var tw := hint_beacon.create_tween().set_loops()
+			tw.tween_property(arrow, "position:y", 1.35, 0.40).set_trans(Tween.TRANS_SINE)
+			tw.tween_property(arrow, "position:y", 1.75, 0.40).set_trans(Tween.TRANS_SINE)
+		hint_beacon.visible = true
+	else:
+		if hint_beacon != null and is_instance_valid(hint_beacon):
+			hint_beacon.queue_free()
+			hint_beacon = null
+
 func _lane_position(cell: Vector2i, direction: Vector2i) -> Vector3:
 	var lane_right := Vector3(-float(direction.y), 0.0, float(direction.x))
 	return LevelData.cell_to_world(cell, board_size) + lane_right * lane_offset

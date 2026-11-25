@@ -138,6 +138,22 @@ func mark_free_chest_opened() -> void:
 	free_chest_last_date = today_date_string()
 	_persist()
 
+func get_powerup(kind: String) -> int:
+	return maxi(0, int(powerups.get(kind, 0)))
+
+func spend_powerup(kind: String) -> bool:
+	var count := get_powerup(kind)
+	if count <= 0:
+		return false
+	powerups[kind] = count - 1
+	_persist()
+	return true
+
+func add_powerup(kind: String, amount: int) -> void:
+	if amount > 0:
+		powerups[kind] = get_powerup(kind) + amount
+		_persist()
+
 func add_powerups(hints: int, helis: int) -> void:
 	if hints > 0:
 		powerups["hint"] = int(powerups.get("hint", 0)) + hints

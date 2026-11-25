@@ -34,3 +34,8 @@ func spawn_blocked_pulse(world_position: Vector3) -> void:
 	tween.tween_property(ring, "scale", Vector3(1.7, 1.0, 1.7), 0.28)
 	tween.tween_property(ring, "scale:y", 0.15, 0.28)
 	tween.chain().tween_callback(ring.queue_free)
+
+func spawn_confetti(world_position: Vector3) -> void:
+	var colors: Array[Color] = [Color("ef4444"), Color("3b82f6"), Color("eab308"), Color("22c55e")]
+	for index in range(8):
+		spawn_exit_sparkles(world_position, colors[index % colors.size()])

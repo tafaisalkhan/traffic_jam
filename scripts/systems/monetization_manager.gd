@@ -10,6 +10,8 @@ signal coin_purchase_state_changed(message: String)
 signal no_fill_changed(no_fill: bool)
 signal pack_purchase_verified(coins: int, hints: int, helis: int)
 signal coffee_purchased(message: String)
+signal in_app_update_available(available: bool)
+signal in_app_update_downloaded()
 
 const SECRETS_PATH := "res://admob_secrets.json"
 const GOOGLE_TEST_PREFIX := "ca-app-pub-3940256099942544"
@@ -18,7 +20,8 @@ const COFFEE_PRODUCT_ID := "cofee"
 const COIN_PRODUCT_ID := "coins_500"
 const COIN_PRODUCT_AMOUNT := 500
 const ANDROID_PLUGIN := "TrafficMashMonetization"
-const INTERSTITIAL_INTERVAL := 1
+const INTERSTITIAL_INTERVAL := 3
+const INTERSTITIAL_COOLDOWN_SEC := 90.0
 const REWARD_COINS := 50
 const PLAY_STORE_URL := "https://play.google.com/store/apps/details?id=com.cityrescue.puzzle"
 
@@ -57,17 +60,29 @@ var rewarded_ready := false
 var reward_pending := false
 var reward_granted_this_ad := false
 var pending_pack_id := ""
+var last_interstitial_time := -100.0
+var interstitials_this_hour := 0
+var hour_start_time := 0.0
 
 func _ready() -> void:
 	_load_admob_secrets()
-	if Engine.has_singleton(ANDROID_PLUGIN):
+	if Engine.has_singleton("TrafficMashAppPlugin"):
+		plugin = Engine.get_singleton("TrafficMashAppPlugin")
+	elif Engine.has_singleton(ANDROID_PLUGIN):
 		plugin = Engine.get_singleton(ANDROID_PLUGIN)
+	if plugin != null:
 		if plugin.has_signal("purchase_verified"):
 			plugin.connect("purchase_verified", _on_purchase_verified)
+		if plugin.has_signal("purchase_success"):
+			plugin.connect("purchase_success", _on_purchase_success)
 		if plugin.has_signal("purchase_failed"):
 			plugin.connect("purchase_failed", _on_purchase_failed)
 		if plugin.has_signal("coin_purchase_verified"):
 			plugin.connect("coin_purchase_verified", _on_coin_purchase_verified)
+		if plugin.has_signal("in_app_update_available"):
+			plugin.connect("in_app_update_available", func(avail: bool): in_app_update_available.emit(avail))
+		if plugin.has_signal("in_app_update_downloaded"):
+			plugin.connect("in_app_update_downloaded", func(): in_app_update_downloaded.emit())
 	call_deferred("_startup_services")
 
 func _startup_services() -> void:
@@ -400,13 +415,39 @@ func check_in_app_update() -> void:
 	elif plugin != null and plugin.has_method("check_in_app_update"):
 		plugin.call("check_in_app_update")
 
+func start_in_app_update() -> void:
+	if Engine.has_singleton("TrafficMashAppPlugin"):
+		Engine.get_singleton("TrafficMashAppPlugin").call("start_update_flow")
+	elif plugin != null and plugin.has_method("start_update_flow"):
+		plugin.call("start_update_flow")
+	else:
+		OS.shell_open(PLAY_STORE_URL)
+
+func complete_in_app_update() -> void:
+	if Engine.has_singleton("TrafficMashAppPlugin"):
+		Engine.get_singleton("TrafficMashAppPlugin").call("complete_update")
+	elif plugin != null and plugin.has_method("complete_update"):
+		plugin.call("complete_update")
+	else:
+		get_tree().reload_current_scene()
+
 func show_level_end_interstitial() -> bool:
 	if no_fill_this_launch or ads_removed:
+		return false
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - last_interstitial_time < INTERSTITIAL_COOLDOWN_SEC:
+		return false
+	if now - hour_start_time > 3600.0:
+		hour_start_time = now
+		interstitials_this_hour = 0
+	if interstitials_this_hour >= 10:
 		return false
 	if interstitial_plugin != null and interstitial_ready:
 		interstitial_ready = false
 		interstitial_plugin.call("show", interstitial_uid)
 		completed_since_ad = 0
+		last_interstitial_time = now
+		interstitials_this_hour += 1
 		return true
 	return false
 
@@ -421,6 +462,11 @@ func on_between_levels() -> void:
 	if completed_since_ad < INTERSTITIAL_INTERVAL:
 		return
 	show_level_end_interstitial()
+
+func _on_purchase_success(product_id: String) -> void:
+	_on_purchase_verified(product_id)
+	if SHOP_PACKS.has(product_id):
+		_on_coin_purchase_verified(product_id)
 
 func _on_purchase_verified(product_id: String) -> void:
 	if product_id == PRODUCT_ID:

@@ -12,7 +12,7 @@ func default_data() -> Dictionary:
 		"stars_by_level": {},
 		"best_moves": {},
 		"settings": {"music": true, "sound": true, "vibration": true, "graphics_quality": "mobile", "daily_notifications": true},
-		"powerups": {"undo": 3, "hint": 3, "shuffle": 2, "remove_car": 1},
+		"powerups": {"undo": 3, "hint": 3, "shuffle": 2, "remove_car": 2, "siren": 2, "freeze": 2},
 		"selected_cosmetic": "classic",
 		"ads_removed": false,
 		"privacy_acknowledged": false,
