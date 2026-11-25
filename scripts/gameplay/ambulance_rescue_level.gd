@@ -887,36 +887,44 @@ func _create_rescue_hud() -> void:
 	hbox.add_theme_constant_override("separation", 14)
 	powerup_tray.add_child(hbox)
 
-	btn_siren = _create_powerup_btn(PowerSirenTex, "SIREN", hbox, _on_powerup_siren_pressed)
-	btn_crane = _create_powerup_btn(PowerCraneTex, "CRANE", hbox, _on_powerup_crane_pressed)
-	btn_freeze = _create_powerup_btn(PowerFreezeTex, "FREEZE", hbox, _on_powerup_freeze_pressed)
-	btn_hint = _create_powerup_btn(PowerHintTex, "HINT", hbox, _on_powerup_hint_pressed)
+	btn_siren = _create_powerup_btn(PowerSirenTex, "SIREN", Color("62bdff"), 0, hbox, _on_powerup_siren_pressed)
+	btn_crane = _create_powerup_btn(PowerCraneTex, "CRANE", Color("ffc45b"), 1, hbox, _on_powerup_crane_pressed)
+	btn_freeze = _create_powerup_btn(PowerFreezeTex, "FREEZE", Color("91dc68"), 2, hbox, _on_powerup_freeze_pressed)
+	btn_hint = _create_powerup_btn(PowerHintTex, "HINT", Color("d1a0ff"), 3, hbox, _on_powerup_hint_pressed)
 	_update_powerup_hud()
 
 
-func _create_powerup_btn(icon_tex: Texture2D, title: String, parent: Control, handler: Callable) -> Button:
+func _create_powerup_btn(icon_tex: Texture2D, title: String, accent_color: Color, idx: int, parent: Control, handler: Callable) -> Button:
 	var btn := Button.new()
 	btn.custom_minimum_size = Vector2(150, 78)
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color("1e293be6")
-	style.corner_radius_top_left = 16
-	style.corner_radius_top_right = 16
-	style.corner_radius_bottom_left = 16
-	style.corner_radius_bottom_right = 16
-	style.border_width_bottom = 4
-	style.border_color = Color("0284c7")
+	style.bg_color = Color(0.04, 0.08, 0.15, 0.95)
+	style.corner_radius_top_left = 14
+	style.corner_radius_top_right = 14
+	style.corner_radius_bottom_left = 14
+	style.corner_radius_bottom_right = 14
+	style.set_border_width_all(3)
+	style.border_width_bottom = 6
+	style.border_color = accent_color
 	style.content_margin_left = 10
 	style.content_margin_right = 10
 	btn.add_theme_stylebox_override("normal", style)
 	var pressed_style := style.duplicate()
 	pressed_style.bg_color = Color("0f172a")
+	pressed_style.border_width_bottom = 2
 	btn.add_theme_stylebox_override("pressed", pressed_style)
+	var hover_style := style.duplicate()
+	hover_style.bg_color = Color("1e293b")
+	btn.add_theme_stylebox_override("hover", hover_style)
 	btn.icon = icon_tex
 	btn.expand_icon = true
 	btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	btn.add_theme_constant_override("icon_max_width", 42)
 	btn.text = "%s\n..." % title
 	btn.add_theme_font_size_override("font_size", 14)
+	btn.add_theme_color_override("font_color", accent_color)
+	btn.add_theme_color_override("font_outline_color", Color("091710"))
+	btn.add_theme_constant_override("outline_size", 5)
 	btn.pressed.connect(handler)
 	btn.button_down.connect(func():
 		btn.pivot_offset = btn.size * 0.5
@@ -932,6 +940,15 @@ func _create_powerup_btn(icon_tex: Texture2D, title: String, parent: Control, ha
 		tw.tween_property(btn, "scale", Vector2.ONE, 0.08)
 	)
 	parent.add_child(btn)
+
+	# Staggered bounce entrance tween matching Ant Colony Wars PowerUps.gd
+	btn.pivot_offset = Vector2(75, 39)
+	btn.scale = Vector2.ZERO
+	var etw := btn.create_tween()
+	etw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	etw.tween_interval(0.12 + idx * 0.065)
+	etw.tween_property(btn, "scale", Vector2.ONE, 0.30).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
 	return btn
 
 

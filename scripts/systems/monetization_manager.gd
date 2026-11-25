@@ -23,7 +23,7 @@ const ANDROID_PLUGIN := "TrafficMashMonetization"
 const INTERSTITIAL_INTERVAL := 3
 const INTERSTITIAL_COOLDOWN_SEC := 90.0
 const REWARD_COINS := 50
-const PLAY_STORE_URL := "https://play.google.com/store/apps/details?id=com.cityrescue.puzzle"
+const PLAY_STORE_URL := "https://play.google.com/store/apps/details?id=org.trafficmash.puzzle"
 
 const SHOP_PACKS := {
 	"coins_1000": {"coins": 1000, "hints": 0, "helis": 0},

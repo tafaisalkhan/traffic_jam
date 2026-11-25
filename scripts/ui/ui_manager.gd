@@ -99,6 +99,8 @@ var timer_label: Label
 var time_button: Button
 var screen_generation := 0
 var current_screen := ""
+var _pulsing_badges: Array = []
+var _anim_t := 0.0
 
 static func create_game_theme() -> Theme:
 	var ui_theme := Theme.new()
@@ -120,6 +122,18 @@ func _ready() -> void:
 	# and panels keep their own default input handling.
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
+
+func _process(delta: float) -> void:
+	_anim_t += delta
+	for i in range(_pulsing_badges.size() - 1, -1, -1):
+		var raw_b = _pulsing_badges[i]
+		if not is_instance_valid(raw_b):
+			_pulsing_badges.remove_at(i)
+			continue
+		var b: Control = raw_b
+		b.pivot_offset = b.size * 0.5
+		b.rotation = sin(_anim_t * 6.0 + float(i)) * 0.14
+		b.scale = Vector2.ONE * (1.0 + abs(sin(_anim_t * 4.2 + float(i))) * 0.12)
 
 func configure_progress(highest: int, stars: Dictionary, total_coins: int, total_levels := 10) -> void:
 	highest_unlocked = highest
@@ -248,53 +262,57 @@ func show_main_menu() -> void:
 	subtitle.position = Vector2(90, 184); subtitle.size = Vector2(540, 32); subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle.add_theme_color_override("font_shadow_color", Color("040c16cc")); subtitle.add_theme_constant_override("shadow_offset_y", 3); root.add_child(subtitle)
 
-	# Left glossy buttons: SHOP and UPGRADES
-	var shop_btn := _tex_button("SHOP", Vector2(24, 246), Vector2(180, 76), BtnGoldTex)
-	shop_btn.add_theme_font_size_override("font_size", 20)
-	shop_btn.pressed.connect(show_shop); root.add_child(shop_btn)
-	_add_tex_icon(shop_btn, IconCoin, Vector2(14, 20), Vector2(34, 34))
-	_wire_button_juice(shop_btn)
-	_animate_pop_in(shop_btn, 0.05)
+	# Center Stage Banner / Level Progress Card (Ant Colony Wars arcade centerpiece)
+	var stage_card := _tex_panel(Vector2(40, 240), Vector2(640, 470), PanelHudTex)
+	root.add_child(stage_card)
+	_animate_pop_in(stage_card, 0.06)
 
-	var upgrades_btn := _tex_button("UPGRADES", Vector2(24, 344), Vector2(180, 76), BtnGoldTex)
-	upgrades_btn.add_theme_font_size_override("font_size", 18)
-	upgrades_btn.pressed.connect(show_upgrades_dialog); root.add_child(upgrades_btn)
-	_add_tex_icon(upgrades_btn, PowerSirenTex, Vector2(12, 18), Vector2(40, 40))
-	_wire_button_juice(upgrades_btn)
-	_animate_pop_in(upgrades_btn, 0.10)
+	var stage_title := _label("RESCUE MISSION", 28, Tokens.GOLD)
+	stage_title.add_theme_color_override("font_color", Tokens.GOLD)
+	stage_title.position = Vector2(0, 20); stage_title.size = Vector2(640, 38)
+	stage_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stage_card.add_child(stage_title)
 
-	# Right glossy buttons: aligned 196px wide column matching each other
-	var daily_reward_btn := _tex_button("REWARD", Vector2(500, 246), Vector2(196, 76), BtnGoldTex if daily_reward_can_claim else BtnMenuTex)
-	daily_reward_btn.add_theme_font_size_override("font_size", 19)
-	daily_reward_btn.pressed.connect(show_daily_reward); root.add_child(daily_reward_btn)
-	_add_tex_icon(daily_reward_btn, IconCoin, Vector2(14, 21), Vector2(32, 32))
-	_wire_button_juice(daily_reward_btn)
-	_animate_pop_in(daily_reward_btn, 0.10)
-	if daily_reward_can_claim:
-		var gift_tag := _tex_panel(Vector2(53, 62), Vector2(90, 32), BtnPlayTex)
-		gift_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		daily_reward_btn.add_child(gift_tag)
-		var gift_lbl := _label("CLAIM", 13, OFF_WHITE); gift_lbl.position = Vector2(0, 5); gift_lbl.size = Vector2(90, 22); gift_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; gift_tag.add_child(gift_lbl)
-		gift_tag.pivot_offset = Vector2(45, 16)
-		_animate_pulse(gift_tag, 1.08, 0.65)
+	var stage_sub := _label("Dispatch the emergency convoy to clear gridlocks!", 17, OFF_WHITE)
+	stage_sub.position = Vector2(40, 64); stage_sub.size = Vector2(560, 28)
+	stage_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stage_card.add_child(stage_sub)
 
-	var daily_text := "DAILY ✓" if daily_completed_today else "DAILY +50"
-	var daily_btn := _tex_button(daily_text, Vector2(500, 344), Vector2(196, 76), BtnMenuTex if daily_completed_today else BtnGoldTex)
-	daily_btn.add_theme_font_size_override("font_size", 18)
-	daily_btn.pressed.connect(daily_challenge_requested.emit); root.add_child(daily_btn)
-	_add_tex_icon(daily_btn, IconStar, Vector2(14, 21), Vector2(32, 32))
-	_wire_button_juice(daily_btn)
-	_animate_pop_in(daily_btn, 0.16)
+	# Hero Vehicle Icon / Centerpiece
+	var hero_icon := TextureRect.new()
+	hero_icon.texture = PowerSirenTex
+	hero_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hero_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hero_icon.position = Vector2(256, 114)
+	hero_icon.size = Vector2(128, 128)
+	hero_icon.pivot_offset = Vector2(64, 64)
+	hero_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_card.add_child(hero_icon)
+	_animate_pulse(hero_icon, 1.08, 1.2)
 
-	# Main Menu Power-Ups Inventory Strip (Prominently displaying real icons & counts)
-	var power_strip := _tex_panel(Vector2(36, 794), Vector2(648, 126), PanelHudTex)
+	var level_badge := _pill_box(Vector2(200, 264), Vector2(240, 52), Color("1e293b"), Color("38bdf8"), 16)
+	stage_card.add_child(level_badge)
+	var lvl_txt := _label("ZONE  •  LEVEL %d" % highest_unlocked, 20, Color("38bdf8"))
+	lvl_txt.add_theme_color_override("font_color", Color("38bdf8"))
+	lvl_txt.position = Vector2(0, 10); lvl_txt.size = Vector2(240, 32)
+	lvl_txt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	level_badge.add_child(lvl_txt)
+
+	var mission_tip := _label("Tap civilian vehicles to drive them out of gridlocks.\nClear the emergency route before the timer expires!", 16, Color("cbd5e1"))
+	mission_tip.position = Vector2(40, 340); mission_tip.size = Vector2(560, 50)
+	mission_tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mission_tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	stage_card.add_child(mission_tip)
+
+	# Main Menu Power-Ups Inventory Strip (matching Ant Colony Wars inventory layout)
+	var power_strip := _tex_panel(Vector2(32, 730), Vector2(656, 142), PanelHudTex)
 	root.add_child(power_strip)
-	_animate_pop_in(power_strip, 0.20)
+	_animate_pop_in(power_strip, 0.12)
 
 	var strip_hdr := _label("RESCUE POWER-UPS  •  TAP TO REFILL", 17, Tokens.GOLD)
 	strip_hdr.add_theme_color_override("font_color", Tokens.GOLD)
 	strip_hdr.position = Vector2(0, 10)
-	strip_hdr.size = Vector2(648, 24)
+	strip_hdr.size = Vector2(656, 24)
 	strip_hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	power_strip.add_child(strip_hdr)
 
@@ -306,15 +324,15 @@ func show_main_menu() -> void:
 	power_strip.add_child(strip_btn)
 
 	var p_specs := [
-		["SIREN", PowerSirenTex, int(powerups.get("siren", 0)), Color("38bdf8")],
-		["CRANE", PowerCraneTex, int(powerups.get("remove_car", 0)), Color("fbbf24")],
-		["FREEZE", PowerFreezeTex, int(powerups.get("freeze", 0)), Color("60a5fa")],
-		["HINT", PowerHintTex, int(powerups.get("hint", 0)), Color("34d399")]
+		["SIREN", PowerSirenTex, int(powerups.get("siren", 0)), Color("62bdff")],
+		["CRANE", PowerCraneTex, int(powerups.get("remove_car", 0)), Color("ffc45b")],
+		["FREEZE", PowerFreezeTex, int(powerups.get("freeze", 0)), Color("91dc68")],
+		["HINT", PowerHintTex, int(powerups.get("hint", 0)), Color("d1a0ff")]
 	]
 	for p_idx in range(p_specs.size()):
 		var ps = p_specs[p_idx]
-		var slot_x := 24 + p_idx * 150
-		var slot_box := _pill_box(Vector2(slot_x, 38), Vector2(142, 74), Color("0d1e36"), ps[3], 14)
+		var slot_x := 18 + p_idx * 156
+		var slot_box := _pill_box(Vector2(slot_x, 40), Vector2(148, 86), Color("0d1e36"), ps[3], 14)
 		slot_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		power_strip.add_child(slot_box)
 
@@ -322,22 +340,50 @@ func show_main_menu() -> void:
 		slot_ic.texture = ps[1]
 		slot_ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		slot_ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		slot_ic.position = Vector2(8, 13)
-		slot_ic.size = Vector2(48, 48)
+		slot_ic.position = Vector2(8, 16)
+		slot_ic.size = Vector2(54, 54)
 		slot_ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot_box.add_child(slot_ic)
 
-		var slot_lbl := _label("%s\nx%d" % [ps[0], ps[2]], 16, OFF_WHITE)
-		slot_lbl.position = Vector2(56, 12)
-		slot_lbl.size = Vector2(80, 50)
+		var slot_lbl := _label("%s\nx%d" % [ps[0], ps[2]], 15, OFF_WHITE)
+		slot_lbl.position = Vector2(62, 14)
+		slot_lbl.size = Vector2(80, 56)
 		slot_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		slot_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		slot_box.add_child(slot_lbl)
 
-	# Bottom glossy PLAY / LEVEL button
-	var play := _tex_button("LEVEL %d" % highest_unlocked, Vector2(140, 940), Vector2(440, 108), BtnPlayTex)
-	play.add_theme_font_size_override("font_size", 36)
-	play.pivot_offset = Vector2(220, 54)
+	# 4-Card Bottom Dock matching Ant Colony Wars (Daily Reward, Upgrades, Daily Jam, Shop)
+	var bottom_dock := HBoxContainer.new()
+	bottom_dock.position = Vector2(24, 892)
+	bottom_dock.size = Vector2(672, 114)
+	bottom_dock.add_theme_constant_override("separation", 14)
+	root.add_child(bottom_dock)
+	_animate_pop_in(bottom_dock, 0.16)
+
+	var card_daily := _dock_card("Reward", IconCoin, Color("2e6b4e"), func():
+		show_daily_reward()
+	, daily_reward_can_claim)
+	bottom_dock.add_child(card_daily)
+
+	var card_upgrades := _dock_card("Upgrades", PowerSirenTex, Color("5c3b7a"), func():
+		show_upgrades_dialog()
+	, false)
+	bottom_dock.add_child(card_upgrades)
+
+	var card_jam := _dock_card("Daily Jam", IconStar, Color("7a3322"), func():
+		daily_challenge_requested.emit()
+	, not daily_completed_today)
+	bottom_dock.add_child(card_jam)
+
+	var card_shop := _dock_card("Shop", IconCoin, Color("6e4f16"), func():
+		show_shop()
+	, false)
+	bottom_dock.add_child(card_shop)
+
+	# Bottom Big Glossy PLAY Button
+	var play := _tex_button("PLAY LEVEL %d" % highest_unlocked, Vector2(60, 1028), Vector2(600, 104), BtnPlayTex)
+	play.add_theme_font_size_override("font_size", 34)
+	play.pivot_offset = Vector2(300, 52)
 	play.pressed.connect(play_requested.emit); root.add_child(play)
 	_wire_button_juice(play)
 	_animate_pulse(play, 1.04, 0.9)
@@ -388,56 +434,106 @@ func set_time_controls_visible(visible: bool) -> void:
 func show_time_briefing(level_id: int, seconds: int) -> void:
 	close_time_overlay()
 	time_overlay = _overlay()
-	var panel := _tex_panel(Vector2(88, 370), Vector2(544, 510), PanelHudTex); time_overlay.add_child(panel)
-	var title := _label("LEVEL %d" % level_id, 38, OFF_WHITE); title.position = Vector2(110, 415); title.size = Vector2(500, 55); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; time_overlay.add_child(title)
-	var clock_row := HBoxContainer.new(); clock_row.position = Vector2(110, 494); clock_row.size = Vector2(500, 62); clock_row.alignment = BoxContainer.ALIGNMENT_CENTER; clock_row.add_theme_constant_override("separation", 14); time_overlay.add_child(clock_row)
-	var clock_icon := TextureRect.new(); clock_icon.texture = IconTime; clock_icon.custom_minimum_size = Vector2(46, 46); clock_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; clock_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; clock_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER; clock_row.add_child(clock_icon)
-	var clock := _label("%d SECONDS" % seconds, 42, OFF_WHITE); clock.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; clock_row.add_child(clock)
-	var guide := _label("Complete this level before time runs out.", 20, OFF_WHITE); guide.position = Vector2(110, 595); guide.size = Vector2(500, 60); guide.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; guide.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; time_overlay.add_child(guide)
-	var start := _tex_button("START LEVEL", Vector2(150, 710), Vector2(420, 76), BtnPlayTex)
+	var panel := _tex_panel(Vector2(88, 370), Vector2(544, 510), PanelHudTex)
+	time_overlay.add_child(panel)
+
+	var title := _label("LEVEL %d" % level_id, 38, OFF_WHITE)
+	title.position = Vector2(22, 38)
+	title.size = Vector2(500, 52)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(title)
+
+	var clock_row := HBoxContainer.new()
+	clock_row.position = Vector2(22, 116)
+	clock_row.size = Vector2(500, 64)
+	clock_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	clock_row.add_theme_constant_override("separation", 14)
+	panel.add_child(clock_row)
+
+	var clock_icon := TextureRect.new()
+	clock_icon.texture = IconTime
+	clock_icon.custom_minimum_size = Vector2(46, 46)
+	clock_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	clock_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	clock_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	clock_row.add_child(clock_icon)
+
+	var clock := _label("%d SECONDS" % seconds, 40, OFF_WHITE)
+	clock.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	clock_row.add_child(clock)
+
+	var guide := _label("Complete this level before time runs out.", 20, OFF_WHITE)
+	guide.position = Vector2(22, 224)
+	guide.size = Vector2(500, 60)
+	guide.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	guide.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	panel.add_child(guide)
+
+	var start := _tex_button("START LEVEL", Vector2(62, 360), Vector2(420, 76), BtnPlayTex)
 	_wire_button_juice(start)
-	start.pressed.connect(func(): close_time_overlay(); time_start_requested.emit()); time_overlay.add_child(start)
+	start.pressed.connect(func(): close_time_overlay(); time_start_requested.emit())
+	panel.add_child(start)
+
 	_open_popup_animated(time_overlay, panel)
 
 func show_time_options(coins_available: int, cost: int, expired: bool) -> void:
 	close_time_overlay()
 	time_overlay = _overlay()
 	var show_ad_btn := rewarded_ready
-	var panel := _tex_panel(Vector2(78, 344 if show_ad_btn else 368), Vector2(564, 558 if show_ad_btn else 488), PanelHudTex); time_overlay.add_child(panel)
-	var heading := _label("TIME'S UP!" if expired else "NEED MORE TIME?", 36, Color("f87171") if expired else OFF_WHITE); heading.position = Vector2(105, 386 if show_ad_btn else 412); heading.size = Vector2(510, 58); heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; time_overlay.add_child(heading)
-	var balance := _label("YOUR COINS: %d" % coins_available, 24, Tokens.GOLD); balance.add_theme_color_override("font_color", Tokens.GOLD); balance.position = Vector2(105, 468 if show_ad_btn else 492); balance.size = Vector2(510, 40); balance.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; time_overlay.add_child(balance)
-	var buy := _tex_button("+15s  •  %d COINS" % cost if coins_available >= cost else "NEED %d COINS FOR +15s" % cost, Vector2(135, 548 if show_ad_btn else 578), Vector2(450, 72), BtnPlayTex)
+	var panel := _tex_panel(Vector2(78, 344 if show_ad_btn else 368), Vector2(564, 558 if show_ad_btn else 488), PanelHudTex)
+	time_overlay.add_child(panel)
+
+	var heading := _label("TIME'S UP!" if expired else "NEED MORE TIME?", 36, Color("f87171") if expired else OFF_WHITE)
+	heading.position = Vector2(27, 36)
+	heading.size = Vector2(510, 52)
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(heading)
+
+	var balance := _label("YOUR COINS: %d" % coins_available, 24, Tokens.GOLD)
+	balance.add_theme_color_override("font_color", Tokens.GOLD)
+	balance.position = Vector2(27, 104)
+	balance.size = Vector2(510, 40)
+	balance.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(balance)
+
+	var buy := _tex_button("+15s  •  %d COINS" % cost if coins_available >= cost else "NEED %d COINS FOR +15s" % cost, Vector2(57, 168), Vector2(450, 72), BtnPlayTex)
 	buy.add_theme_font_size_override("font_size", 24)
 	buy.disabled = coins_available < cost
 	_wire_button_juice(buy)
-	buy.pressed.connect(time_boost_requested.emit); time_overlay.add_child(buy)
+	buy.pressed.connect(time_boost_requested.emit)
+	panel.add_child(buy)
+
 	if show_ad_btn:
-		time_reward_button = _tex_button("WATCH AD: +50 COINS & +15s" if rewarded_ready else "REWARDED AD LOADING", Vector2(135, 642), Vector2(450, 72), BtnGoldTex)
+		time_reward_button = _tex_button("WATCH AD: +50 COINS & +15s" if rewarded_ready else "REWARDED AD LOADING", Vector2(57, 260), Vector2(450, 72), BtnGoldTex)
 		time_reward_button.add_theme_font_size_override("font_size", 22)
 		time_reward_button.disabled = not rewarded_ready
 		_wire_button_juice(time_reward_button)
-		time_reward_button.pressed.connect(time_ad_requested.emit); time_overlay.add_child(time_reward_button)
+		time_reward_button.pressed.connect(time_ad_requested.emit)
+		panel.add_child(time_reward_button)
 	else:
 		time_reward_button = null
+
+	var bottom_y := 354 if show_ad_btn else 270
 	if expired:
-		var btn_y := 758 if show_ad_btn else 704
-		var retry_btn := _tex_button("RETRY (%d COINS)" % cost, Vector2(138, btn_y), Vector2(212, 68), BtnGoldTex)
+		var retry_btn := _tex_button("RETRY (%d COINS)" % cost, Vector2(57, bottom_y), Vector2(215, 68), BtnGoldTex)
 		retry_btn.add_theme_font_size_override("font_size", 20)
 		retry_btn.disabled = coins_available < cost
 		_wire_button_juice(retry_btn)
 		retry_btn.pressed.connect(func(): close_time_overlay(); restart_requested.emit())
-		time_overlay.add_child(retry_btn)
-		var menu_btn := _tex_button("MAIN MENU", Vector2(370, btn_y), Vector2(212, 68), BtnMenuTex)
+		panel.add_child(retry_btn)
+
+		var menu_btn := _tex_button("MAIN MENU", Vector2(292, bottom_y), Vector2(215, 68), BtnMenuTex)
 		menu_btn.add_theme_font_size_override("font_size", 20)
 		_wire_button_juice(menu_btn)
 		menu_btn.pressed.connect(func(): close_time_overlay(); main_menu_requested.emit())
-		time_overlay.add_child(menu_btn)
+		panel.add_child(menu_btn)
 	else:
-		var exit_button := _tex_button("KEEP PLAYING", Vector2(175, 758 if show_ad_btn else 704), Vector2(370, 68), BtnMenuTex)
+		var exit_button := _tex_button("KEEP PLAYING", Vector2(97, bottom_y), Vector2(370, 68), BtnMenuTex)
 		exit_button.add_theme_font_size_override("font_size", 24)
 		_wire_button_juice(exit_button)
 		exit_button.pressed.connect(func(): close_time_overlay(); time_options_closed.emit())
-		time_overlay.add_child(exit_button)
+		panel.add_child(exit_button)
+
 	_open_popup_animated(time_overlay, panel)
 
 func close_time_overlay(on_done: Callable = Callable()) -> void:
@@ -455,59 +551,140 @@ func close_time_overlay(on_done: Callable = Callable()) -> void:
 
 func show_pause() -> void:
 	var overlay := _overlay()
-	var panel := _tex_panel(Vector2(98, 320), Vector2(524, 540), PanelHudTex); overlay.add_child(panel)
-	var title := _label("PAUSED", 42, OFF_WHITE); title.position = Vector2(125, 360); title.size = Vector2(470, 60); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; overlay.add_child(title)
-	var resume := _tex_button("RESUME", Vector2(160, 450), Vector2(400, 72), BtnPlayTex); resume.add_theme_font_size_override("font_size", 26); _wire_button_juice(resume); resume.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): resume_requested.emit())); overlay.add_child(resume)
-	var settings_p := _tex_button("SETTINGS", Vector2(160, 538), Vector2(400, 68), BtnMenuTex); settings_p.add_theme_font_size_override("font_size", 24); _wire_button_juice(settings_p); settings_p.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): show_settings())); overlay.add_child(settings_p)
-	var restart := _tex_button("RESTART", Vector2(160, 622), Vector2(400, 68), BtnGoldTex); restart.add_theme_font_size_override("font_size", 24); _wire_button_juice(restart); restart.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): restart_requested.emit())); overlay.add_child(restart)
-	var menu := _tex_button("MAIN MENU", Vector2(160, 706), Vector2(400, 68), BtnMenuTex); menu.add_theme_font_size_override("font_size", 24); _wire_button_juice(menu); menu.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): main_menu_requested.emit())); overlay.add_child(menu)
+	var panel := _tex_panel(Vector2(98, 320), Vector2(524, 540), PanelHudTex)
+	overlay.add_child(panel)
+
+	var title := _label("PAUSED", 42, OFF_WHITE)
+	title.position = Vector2(27, 36)
+	title.size = Vector2(470, 56)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(title)
+
+	var resume := _tex_button("RESUME", Vector2(62, 120), Vector2(400, 72), BtnPlayTex)
+	resume.add_theme_font_size_override("font_size", 26)
+	_wire_button_juice(resume)
+	resume.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): resume_requested.emit()))
+	panel.add_child(resume)
+
+	var settings_p := _tex_button("SETTINGS", Vector2(62, 208), Vector2(400, 68), BtnMenuTex)
+	settings_p.add_theme_font_size_override("font_size", 24)
+	_wire_button_juice(settings_p)
+	settings_p.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): show_settings()))
+	panel.add_child(settings_p)
+
+	var restart := _tex_button("RESTART", Vector2(62, 292), Vector2(400, 68), BtnGoldTex)
+	restart.add_theme_font_size_override("font_size", 24)
+	_wire_button_juice(restart)
+	restart.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): restart_requested.emit()))
+	panel.add_child(restart)
+
+	var menu := _tex_button("MAIN MENU", Vector2(62, 376), Vector2(400, 68), BtnMenuTex)
+	menu.add_theme_font_size_override("font_size", 24)
+	_wire_button_juice(menu)
+	menu.pressed.connect(func(): _close_popup_animated(overlay, panel, func(): main_menu_requested.emit()))
+	panel.add_child(menu)
+
 	_open_popup_animated(overlay, panel)
 
 func show_lives_fail(coins_available: int, cost: int, ad_ready: bool) -> void:
 	close_time_overlay()
 	time_overlay = _overlay()
 	var show_ad_btn := ad_ready and not no_fill_active
-	var panel := _tex_panel(Vector2(78, 355 if show_ad_btn else 365), Vector2(564, 570 if show_ad_btn else 510), PanelHudTex); time_overlay.add_child(panel)
-	var title := _label("CRASHED!", 40, OFF_WHITE); title.position = Vector2(100, 395 if show_ad_btn else 405); title.size = Vector2(520, 58); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; time_overlay.add_child(title)
+	var panel := _tex_panel(Vector2(78, 355 if show_ad_btn else 365), Vector2(564, 570 if show_ad_btn else 510), PanelHudTex)
+	time_overlay.add_child(panel)
+
+	var title := _label("CRASHED!", 40, OFF_WHITE)
+	title.position = Vector2(22, 36)
+	title.size = Vector2(520, 52)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(title)
+
 	var guide_msg := "All 3 lives lost! Continue with %d coins or watch an ad." % cost if show_ad_btn else "All 3 lives lost! Continue with %d coins or retry." % cost
-	var guide := _label(guide_msg, 21, OFF_WHITE); guide.position = Vector2(110, 468 if show_ad_btn else 476); guide.size = Vector2(500, 66); guide.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; guide.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; time_overlay.add_child(guide)
-	var coin_row := HBoxContainer.new(); coin_row.position = Vector2(110, 540 if show_ad_btn else 548); coin_row.size = Vector2(500, 40); coin_row.alignment = BoxContainer.ALIGNMENT_CENTER; coin_row.add_theme_constant_override("separation", 10); time_overlay.add_child(coin_row)
-	var c_icon := TextureRect.new(); c_icon.texture = IconCoin; c_icon.custom_minimum_size = Vector2(32, 32); c_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; c_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; c_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER; coin_row.add_child(c_icon)
-	var c_lbl := _label("COINS: %d" % coins_available, 22, OFF_WHITE); c_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; coin_row.add_child(c_lbl)
-	var cont_btn := _tex_button("CONTINUE (%d COINS)" % cost, Vector2(138, 608 if show_ad_btn else 622), Vector2(444, 70), BtnPlayTex)
-	cont_btn.disabled = coins_available < cost; _wire_button_juice(cont_btn); cont_btn.pressed.connect(lives_continue_requested.emit); time_overlay.add_child(cont_btn)
+	var guide := _label(guide_msg, 20, OFF_WHITE)
+	guide.position = Vector2(32, 102)
+	guide.size = Vector2(500, 56)
+	guide.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	guide.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	panel.add_child(guide)
+
+	var coin_row := HBoxContainer.new()
+	coin_row.position = Vector2(32, 172)
+	coin_row.size = Vector2(500, 40)
+	coin_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	coin_row.add_theme_constant_override("separation", 10)
+	panel.add_child(coin_row)
+
+	var c_icon := TextureRect.new()
+	c_icon.texture = IconCoin
+	c_icon.custom_minimum_size = Vector2(32, 32)
+	c_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	c_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	c_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	coin_row.add_child(c_icon)
+
+	var c_lbl := _label("COINS: %d" % coins_available, 22, OFF_WHITE)
+	c_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	coin_row.add_child(c_lbl)
+
+	var cont_btn := _tex_button("CONTINUE (%d COINS)" % cost, Vector2(60, 230), Vector2(444, 70), BtnPlayTex)
+	cont_btn.disabled = coins_available < cost
+	_wire_button_juice(cont_btn)
+	cont_btn.pressed.connect(lives_continue_requested.emit)
+	panel.add_child(cont_btn)
+
 	if show_ad_btn:
-		lives_ad_button = _tex_button("WATCH AD (+50 COINS)" if ad_ready else "AD LOADING...", Vector2(138, 694), Vector2(444, 68), BtnGoldTex)
-		lives_ad_button.disabled = not ad_ready; _wire_button_juice(lives_ad_button); lives_ad_button.pressed.connect(lives_ad_requested.emit); time_overlay.add_child(lives_ad_button)
+		lives_ad_button = _tex_button("WATCH AD (+50 COINS)" if ad_ready else "AD LOADING...", Vector2(60, 316), Vector2(444, 68), BtnGoldTex)
+		lives_ad_button.disabled = not ad_ready
+		_wire_button_juice(lives_ad_button)
+		lives_ad_button.pressed.connect(lives_ad_requested.emit)
+		panel.add_child(lives_ad_button)
 	else:
 		lives_ad_button = null
-	var retry_y := 782 if show_ad_btn else 730
-	var retry_btn := _tex_button("RETRY (%d COINS)" % cost, Vector2(138, retry_y), Vector2(212, 66), BtnGoldTex)
+
+	var retry_y := 402 if show_ad_btn else 322
+	var retry_btn := _tex_button("RETRY (%d COINS)" % cost, Vector2(60, retry_y), Vector2(212, 66), BtnGoldTex)
 	retry_btn.add_theme_font_size_override("font_size", 20)
 	retry_btn.disabled = coins_available < cost
 	_wire_button_juice(retry_btn)
-	retry_btn.pressed.connect(func(): close_time_overlay(); restart_requested.emit()); time_overlay.add_child(retry_btn)
-	var menu_btn := _tex_button("MAIN MENU", Vector2(370, retry_y), Vector2(212, 66), BtnMenuTex)
+	retry_btn.pressed.connect(func(): close_time_overlay(); restart_requested.emit())
+	panel.add_child(retry_btn)
+
+	var menu_btn := _tex_button("MAIN MENU", Vector2(292, retry_y), Vector2(212, 66), BtnMenuTex)
 	menu_btn.add_theme_font_size_override("font_size", 20)
 	_wire_button_juice(menu_btn)
-	menu_btn.pressed.connect(func(): close_time_overlay(); main_menu_requested.emit()); time_overlay.add_child(menu_btn)
+	menu_btn.pressed.connect(func(): close_time_overlay(); main_menu_requested.emit())
+	panel.add_child(menu_btn)
+
 	_open_popup_animated(time_overlay, panel)
 
 func show_complete(moves: int, target: int, earned_stars := -1) -> void:
 	_clear()
 	current_screen = "complete"
 	var overlay := _overlay()
-	var coin_hud := _tex_panel(Vector2(516, 92), Vector2(180, 54), PanelHudTex); overlay.add_child(coin_hud)
+	var coin_hud := _tex_panel(Vector2(516, 92), Vector2(180, 54), PanelHudTex)
+	overlay.add_child(coin_hud)
 	var hud_coin_icon := _add_tex_icon(coin_hud, IconCoin, Vector2(14, 11), Vector2(32, 32))
 	hud_coin_icon.pivot_offset = Vector2(16, 16)
 	var start_coins := maxi(0, coins - 20)
-	var hud_coin_lbl := _label("%d" % start_coins, 22, OFF_WHITE); hud_coin_lbl.position = Vector2(52, 11); hud_coin_lbl.size = Vector2(116, 32); hud_coin_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; hud_coin_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; coin_hud.add_child(hud_coin_lbl)
+	var hud_coin_lbl := _label("%d" % start_coins, 22, OFF_WHITE)
+	hud_coin_lbl.position = Vector2(52, 11)
+	hud_coin_lbl.size = Vector2(116, 32)
+	hud_coin_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hud_coin_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	coin_hud.add_child(hud_coin_lbl)
 
-	var panel := _tex_panel(Vector2(78, 340), Vector2(564, 600), PanelHudTex); overlay.add_child(panel)
-	var title := _label("LEVEL COMPLETE!", 36, OFF_WHITE); title.position = Vector2(100, 376); title.size = Vector2(520, 56); title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; overlay.add_child(title)
+	var panel := _tex_panel(Vector2(78, 340), Vector2(564, 600), PanelHudTex)
+	overlay.add_child(panel)
+
+	var title := _label("LEVEL COMPLETE!", 36, OFF_WHITE)
+	title.position = Vector2(22, 34)
+	title.size = Vector2(520, 50)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	panel.add_child(title)
+
 	var stars := earned_stars if earned_stars > 0 else 3 if moves <= target else 2 if moves <= target + 2 else 1
 	for s_idx in range(3):
-		var star_tex := _add_tex_icon(overlay, IconStar, Vector2(244 + s_idx * 84, 444), Vector2(64, 64))
+		var star_tex := _add_tex_icon(panel, IconStar, Vector2(166 + s_idx * 84, 100), Vector2(64, 64))
 		star_tex.pivot_offset = Vector2(32, 32)
 		if s_idx >= stars:
 			star_tex.modulate = Color(1.0, 1.0, 1.0, 0.25)
@@ -518,9 +695,25 @@ func show_complete(moves: int, target: int, earned_stars := -1) -> void:
 				star_tween.tween_interval(float(s_idx) * 0.2)
 			star_tween.tween_property(star_tex, "scale", Vector2(1.22, 1.22), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 			star_tween.tween_property(star_tex, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	var reward_row := HBoxContainer.new(); reward_row.position = Vector2(100, 540); reward_row.size = Vector2(520, 40); reward_row.alignment = BoxContainer.ALIGNMENT_CENTER; reward_row.add_theme_constant_override("separation", 10); overlay.add_child(reward_row)
-	var coin_tex := TextureRect.new(); coin_tex.texture = IconCoin; coin_tex.custom_minimum_size = Vector2(34, 34); coin_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; coin_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; coin_tex.size_flags_vertical = Control.SIZE_SHRINK_CENTER; reward_row.add_child(coin_tex)
-	var reward_lbl := _label("+20", 24, OFF_WHITE); reward_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER; reward_row.add_child(reward_lbl)
+
+	var reward_row := HBoxContainer.new()
+	reward_row.position = Vector2(22, 196)
+	reward_row.size = Vector2(520, 40)
+	reward_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	reward_row.add_theme_constant_override("separation", 10)
+	panel.add_child(reward_row)
+
+	var coin_tex := TextureRect.new()
+	coin_tex.texture = IconCoin
+	coin_tex.custom_minimum_size = Vector2(34, 34)
+	coin_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	coin_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	coin_tex.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	reward_row.add_child(coin_tex)
+
+	var reward_lbl := _label("+20", 24, OFF_WHITE)
+	reward_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	reward_row.add_child(reward_lbl)
 
 	# Fly 8 coins from the reward area into the top-right Coin HUD
 	var fly_target := Vector2(534, 103)
@@ -543,9 +736,21 @@ func show_complete(moves: int, target: int, earned_stars := -1) -> void:
 				pt.tween_property(hud_coin_icon, "scale", Vector2.ONE, 0.09)
 		)
 
-	var next := _tex_button("NEXT LEVEL", Vector2(148, 646), Vector2(424, 76), BtnPlayTex); _wire_button_juice(next); next.pressed.connect(next_requested.emit); overlay.add_child(next)
-	var retry := _tex_button("RETRY", Vector2(148, 756), Vector2(204, 68), BtnGoldTex); _wire_button_juice(retry); retry.pressed.connect(restart_requested.emit); overlay.add_child(retry)
-	var main_btn := _tex_button("MAIN MENU", Vector2(368, 756), Vector2(204, 68), BtnMenuTex); _wire_button_juice(main_btn); main_btn.pressed.connect(main_menu_requested.emit); overlay.add_child(main_btn)
+	var next := _tex_button("NEXT LEVEL", Vector2(70, 260), Vector2(424, 76), BtnPlayTex)
+	_wire_button_juice(next)
+	next.pressed.connect(next_requested.emit)
+	panel.add_child(next)
+
+	var retry := _tex_button("RETRY", Vector2(70, 360), Vector2(204, 68), BtnGoldTex)
+	_wire_button_juice(retry)
+	retry.pressed.connect(restart_requested.emit)
+	panel.add_child(retry)
+
+	var main_btn := _tex_button("MAIN MENU", Vector2(290, 360), Vector2(204, 68), BtnMenuTex)
+	_wire_button_juice(main_btn)
+	main_btn.pressed.connect(main_menu_requested.emit)
+	panel.add_child(main_btn)
+
 	_open_popup_animated(overlay, panel)
 
 func show_level_select() -> void:
@@ -696,6 +901,7 @@ func _choose_cosmetic(cosmetic: String) -> void:
 func _clear() -> void:
 	screen_generation += 1
 	current_screen = ""
+	_pulsing_badges.clear()
 	for child in root.get_children(): child.queue_free()
 	hud = null; moves_label = null; status_label = null; time_icon = null; coin_hud_label = null; lives_label = null
 	reward_button = null; lives_ad_button = null
@@ -823,8 +1029,13 @@ func _button(text: String, position: Vector2, size: Vector2, color: Color) -> Bu
 	button.add_theme_stylebox_override("normal", normal); button.add_theme_stylebox_override("pressed", pressed); return button
 
 func _label(text: String, font_size: int, _color: Color) -> Label:
-	var label := Label.new(); label.text = text; label.add_theme_font_override("font", GameFont); label.add_theme_font_size_override("font_size", font_size); label.add_theme_color_override("font_color", OFF_WHITE)
-	label.add_theme_color_override("font_outline_color", Color("061124")); label.add_theme_constant_override("outline_size", 4)
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_override("font", GameFont)
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", OFF_WHITE)
+	label.add_theme_color_override("font_outline_color", Color("061124"))
+	label.add_theme_constant_override("outline_size", 4)
 	return label
 
 func _tex_panel(position: Vector2, size: Vector2, tex: Texture2D) -> Panel:
@@ -960,47 +1171,66 @@ func show_home_support_popup(action_idx: int = -1) -> void:
 	var pick := action_idx if action_idx in [0, 1, 2] else randi() % 3
 	support_overlay = _overlay()
 
-	var card := _tex_panel(Vector2(45, 330), Vector2(630, 610), PanelHudTex)
+	var card_size := Vector2(630, 610)
+	var card := _tex_panel(Vector2(45, 330), card_size, PanelHudTex)
 	support_overlay.add_child(card)
 
-	var header_pill := _tex_panel(Vector2(115, 294), Vector2(490, 88), BtnGoldTex)
-	support_overlay.add_child(header_pill)
-	var titles := ["LOVE CITY RESCUE?", "SHARE THE LOVE", "A COFFEE FOR THE DEV?"]
-	var header_lbl := _label(titles[pick], 32, Tokens.INK)
-	header_lbl.add_theme_color_override("font_color", Tokens.INK)
-	header_lbl.position = Vector2(0, 18); header_lbl.size = Vector2(490, 52); header_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	header_pill.add_child(header_lbl)
-
-	var close_btn := _tex_button("X", Vector2(616, 314), Vector2(64, 64), BtnMenuTex)
-	close_btn.add_theme_font_size_override("font_size", 26)
-	_wire_button_juice(close_btn)
+	# Red Square [✖] Close Button (Ant Colony Wars Style)
+	var close_btn := Button.new()
+	close_btn.text = "✖"
+	close_btn.size = Vector2(46, 46)
+	close_btn.position = Vector2(card_size.x - 24, -18)
+	close_btn.add_theme_font_override("font", GameFont)
+	close_btn.add_theme_font_size_override("font_size", 24)
+	close_btn.add_theme_color_override("font_color", Color("ffffff"))
+	var cs := StyleBoxFlat.new()
+	cs.bg_color = Color("e83b3b")
+	cs.border_color = Color("1a0808")
+	cs.set_border_width_all(3)
+	cs.border_width_bottom = 5
+	cs.set_corner_radius_all(10)
+	var ch := cs.duplicate()
+	ch.bg_color = Color("ff5252")
+	close_btn.add_theme_stylebox_override("normal", cs)
+	close_btn.add_theme_stylebox_override("hover", ch)
+	close_btn.add_theme_stylebox_override("pressed", ch)
 	close_btn.pressed.connect(func():
 		if support_overlay != null and is_instance_valid(support_overlay):
 			_close_popup_animated(support_overlay, card, func(): support_overlay = null)
 		else:
 			support_overlay = null
 	)
-	support_overlay.add_child(close_btn)
+	card.add_child(close_btn)
+	_wire_button_juice(close_btn)
+
+	# Gold Header Pill
+	var header_pill := _tex_panel(Vector2(70, -36), Vector2(490, 80), BtnGoldTex)
+	card.add_child(header_pill)
+	var titles := ["LOVE CITY RESCUE?", "SHARE THE LOVE", "A COFFEE FOR THE DEV?"]
+	var header_lbl := _label(titles[pick], 30, Tokens.INK)
+	header_lbl.add_theme_color_override("font_color", Tokens.INK)
+	header_lbl.position = Vector2(0, 14); header_lbl.size = Vector2(490, 52); header_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header_pill.add_child(header_lbl)
 
 	if no_fill_active:
-		var notice := _label("NO ADS TODAY", 26, Color("62d989"))
+		var notice := _label("NO ADS TODAY", 24, Color("62d989"))
 		notice.add_theme_color_override("font_color", Color("62d989"))
-		notice.position = Vector2(150, 86); notice.size = Vector2(330, 40); notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		notice.position = Vector2(150, 60); notice.size = Vector2(330, 36); notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		card.add_child(notice)
 
 	if pick == 0:
 		for i in range(5):
-			_add_tex_icon(card, IconStar, Vector2(135 + i * 74, 156), Vector2(62, 62))
+			_add_tex_icon(card, IconStar, Vector2(135 + i * 74, 126), Vector2(62, 62))
 	else:
-		_add_tex_icon(card, IconCoin, Vector2(255, 136), Vector2(120, 120))
+		_add_tex_icon(card, IconCoin, Vector2(255, 110), Vector2(120, 120))
 
 	var texts := [
 		"Enjoying the traffic puzzles?\nYour 5-star review helps us grow!",
 		"Invite a friend to play\nCity Rescue Puzzle together!",
 		"Support more levels & updates.\nCoffee is a one-time $1.99 consumable."
 	]
-	var desc_lbl := _label(texts[pick], 25, OFF_WHITE)
-	desc_lbl.position = Vector2(45, 282); desc_lbl.size = Vector2(540, 110); desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var desc_lbl := _label(texts[pick], 23, OFF_WHITE)
+	desc_lbl.position = Vector2(45, 260); desc_lbl.size = Vector2(540, 110); desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	card.add_child(desc_lbl)
 
 	var cta_texts := ["RATE GAME", "SHARE GAME", "COFFEE • $1.99"]
@@ -1187,36 +1417,70 @@ func show_upgrades_dialog() -> void:
 		upgrades_overlay.queue_free()
 	upgrades_overlay = _overlay()
 
-	var card := _tex_panel(Vector2(38, 170), Vector2(644, 900), PanelHudTex)
+	var card_size := Vector2(650, 920)
+	var card := _tex_panel(Vector2(35, 160), card_size, PanelHudTex)
 	upgrades_overlay.add_child(card)
 
-	var header_pill := _tex_panel(Vector2(88, 130), Vector2(544, 84), BtnGoldTex)
-	upgrades_overlay.add_child(header_pill)
-
-	var header_lbl := _label("RESCUE POWER-UPS", 30, Tokens.INK)
-	header_lbl.add_theme_color_override("font_color", Tokens.INK)
-	header_lbl.position = Vector2(0, 12)
-	header_lbl.size = Vector2(544, 40)
-	header_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	header_pill.add_child(header_lbl)
-
-	var sub_lbl := _label("Spend Coins to Refill Charges", 17, Color("4a3b10"))
-	sub_lbl.add_theme_color_override("font_color", Color("4a3b10"))
-	sub_lbl.position = Vector2(0, 48)
-	sub_lbl.size = Vector2(544, 24)
-	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	header_pill.add_child(sub_lbl)
-
-	var close_btn := _tex_button("X", Vector2(610, 140), Vector2(62, 62), BtnMenuTex)
-	close_btn.add_theme_font_size_override("font_size", 26)
+	# Red Square [✖] Close Button overlapping top-right corner (Ant Colony Wars Style)
+	var close_btn := Button.new()
+	close_btn.text = "✖"
+	close_btn.size = Vector2(46, 46)
+	close_btn.position = Vector2(card_size.x - 24, -18)
+	close_btn.add_theme_font_override("font", GameFont)
+	close_btn.add_theme_font_size_override("font_size", 24)
+	close_btn.add_theme_color_override("font_color", Color("ffffff"))
+	var cs := StyleBoxFlat.new()
+	cs.bg_color = Color("e83b3b")
+	cs.border_color = Color("1a0808")
+	cs.set_border_width_all(3)
+	cs.border_width_bottom = 5
+	cs.set_corner_radius_all(10)
+	var ch := cs.duplicate()
+	ch.bg_color = Color("ff5252")
+	close_btn.add_theme_stylebox_override("normal", cs)
+	close_btn.add_theme_stylebox_override("hover", ch)
+	close_btn.add_theme_stylebox_override("pressed", ch)
+	close_btn.pressed.connect(close_upgrades_dialog)
+	card.add_child(close_btn)
 	_wire_button_juice(close_btn)
-	close_btn.pressed.connect(func():
-		close_upgrades_dialog()
-	)
-	upgrades_overlay.add_child(close_btn)
+
+	# Gold Header Pill with VBoxContainer so text NEVER overlaps!
+	var header_pill := PanelContainer.new()
+	header_pill.position = Vector2(80, -32)
+	header_pill.size = Vector2(490, 76)
+	header_pill.custom_minimum_size = Vector2(490, 76)
+	var h_style := StyleBoxTexture.new()
+	h_style.texture = BtnGoldTex
+	h_style.texture_margin_left = 24
+	h_style.texture_margin_right = 24
+	h_style.texture_margin_top = 10
+	h_style.texture_margin_bottom = 10
+	header_pill.add_theme_stylebox_override("panel", h_style)
+	card.add_child(header_pill)
+
+	var h_vbox := VBoxContainer.new()
+	h_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	h_vbox.add_theme_constant_override("separation", 2)
+	header_pill.add_child(h_vbox)
+
+	var header_lbl := Label.new()
+	header_lbl.text = "RESCUE POWER-UPS"
+	header_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header_lbl.add_theme_font_override("font", GameFont)
+	header_lbl.add_theme_font_size_override("font_size", 26)
+	header_lbl.add_theme_color_override("font_color", Tokens.INK)
+	h_vbox.add_child(header_lbl)
+
+	var sub_lbl := Label.new()
+	sub_lbl.text = "Spend Coins to Refill Charges"
+	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub_lbl.add_theme_font_override("font", GameFont)
+	sub_lbl.add_theme_font_size_override("font_size", 14)
+	sub_lbl.add_theme_color_override("font_color", Color("4a3b10"))
+	h_vbox.add_child(sub_lbl)
 
 	# Coin balance pill at top of card
-	var coin_bar := _tex_panel(Vector2(212, 54), Vector2(220, 50), PanelHudTex)
+	var coin_bar := _tex_panel(Vector2(215, 60), Vector2(220, 50), PanelHudTex)
 	card.add_child(coin_bar)
 	_add_tex_icon(coin_bar, IconCoin, Vector2(12, 9), Vector2(32, 32))
 	var coin_txt := _label("%d COINS" % coins, 20, Tokens.GOLD)
@@ -1225,12 +1489,13 @@ func show_upgrades_dialog() -> void:
 	coin_bar.add_child(coin_txt)
 
 	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(24, 116)
-	scroll.size = Vector2(596, 756)
+	scroll.position = Vector2(20, 122)
+	scroll.size = Vector2(610, 770)
 	card.add_child(scroll)
 
 	upgrades_body_root = VBoxContainer.new()
-	upgrades_body_root.custom_minimum_size = Vector2(576, 0)
+	upgrades_body_root.custom_minimum_size = Vector2(590, 0)
+	upgrades_body_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	upgrades_body_root.add_theme_constant_override("separation", 14)
 	scroll.add_child(upgrades_body_root)
 
@@ -1265,7 +1530,7 @@ func _render_upgrades_list() -> void:
 		{
 			"id": "siren",
 			"title": "EMERGENCY SIREN",
-			"desc": "Instantly clears civilian cars blocking the emergency rescue route",
+			"desc": "Clears civilian cars on emergency rescue route.",
 			"icon": PowerSirenTex,
 			"cost": 50,
 			"amount": 2,
@@ -1274,7 +1539,7 @@ func _render_upgrades_list() -> void:
 		{
 			"id": "remove_car",
 			"title": "TOW CRANE",
-			"desc": "Tap any civilian car to lift & tow it away from the traffic jam",
+			"desc": "Tap any civilian car to tow it from the jam.",
 			"icon": PowerCraneTex,
 			"cost": 60,
 			"amount": 2,
@@ -1283,7 +1548,7 @@ func _render_upgrades_list() -> void:
 		{
 			"id": "freeze",
 			"title": "TIME FREEZE",
-			"desc": "Adds +20 seconds and pauses timer countdown for 5 seconds",
+			"desc": "Adds +20 seconds and pauses timer countdown.",
 			"icon": PowerFreezeTex,
 			"cost": 50,
 			"amount": 2,
@@ -1292,7 +1557,7 @@ func _render_upgrades_list() -> void:
 		{
 			"id": "hint",
 			"title": "HINT BEACON",
-			"desc": "Bouncing golden beacon highlights the exact vehicle to move next",
+			"desc": "Bouncing beacon highlights next best move.",
 			"icon": PowerHintTex,
 			"cost": 40,
 			"amount": 3,
@@ -1301,67 +1566,122 @@ func _render_upgrades_list() -> void:
 	]
 
 	for item in powerup_items:
-		var row_card := _tex_panel(Vector2.ZERO, Vector2(576, 126), PanelHudTex)
-		row_card.custom_minimum_size = Vector2(576, 126)
-		upgrades_body_root.add_child(row_card)
+		var card := PanelContainer.new()
+		card.custom_minimum_size = Vector2(590, 126)
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var c_style := StyleBoxFlat.new()
+		c_style.bg_color = Color(0.08, 0.16, 0.28, 0.95)
+		c_style.border_color = Color("1e3a5f")
+		c_style.set_border_width_all(3)
+		c_style.border_width_bottom = 6
+		c_style.set_corner_radius_all(16)
+		c_style.content_margin_left = 14
+		c_style.content_margin_right = 14
+		c_style.content_margin_top = 10
+		c_style.content_margin_bottom = 10
+		card.add_theme_stylebox_override("panel", c_style)
+		upgrades_body_root.add_child(card)
 
-		# Icon with frame
-		var icon_frame := _pill_box(Vector2(16, 18), Vector2(90, 90), Color("0b182d"), Color("38bdf8"), 14)
-		row_card.add_child(icon_frame)
-		var ic := TextureRect.new()
-		ic.texture = item["icon"]
-		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		ic.position = Vector2(13, 13)
-		ic.size = Vector2(64, 64)
-		icon_frame.add_child(ic)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 14)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		card.add_child(row)
 
-		# Info vbox
-		var t := _label("%s (x%d)" % [item["title"], item["count"]], 22, Tokens.GOLD)
+		# 1. Left: Icon slot box
+		row.add_child(_icon_slot_box(item["icon"], Vector2(68, 68)))
+
+		# 2. Middle: Info VBoxContainer (EXPAND_FILL - NEVER overlaps button)
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.alignment = BoxContainer.ALIGNMENT_CENTER
+		info.add_theme_constant_override("separation", 4)
+		row.add_child(info)
+
+		var t := Label.new()
+		t.text = "%s (x%d)" % [item["title"], item["count"]]
+		t.add_theme_font_override("font", GameFont)
+		t.add_theme_font_size_override("font_size", 18)
 		t.add_theme_color_override("font_color", Tokens.GOLD)
-		t.position = Vector2(118, 16); t.size = Vector2(270, 30)
-		row_card.add_child(t)
+		t.add_theme_color_override("font_outline_color", Color("0a1824"))
+		t.add_theme_constant_override("outline_size", 5)
+		info.add_child(t)
 
-		var d := _label(item["desc"], 15, OFF_WHITE)
-		d.position = Vector2(118, 50); d.size = Vector2(270, 66); d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		row_card.add_child(d)
+		var d := Label.new()
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.text = item["desc"]
+		d.add_theme_font_override("font", GameFont)
+		d.add_theme_font_size_override("font_size", 14)
+		d.add_theme_color_override("font_color", OFF_WHITE)
+		d.add_theme_color_override("font_outline_color", Color("081520"))
+		d.add_theme_constant_override("outline_size", 3)
+		info.add_child(d)
 
-		var buy_btn := _tex_button("%d COINS\n(+%d)" % [item["cost"], item["amount"]], Vector2(404, 24), Vector2(156, 78), BtnPlayTex)
-		buy_btn.add_theme_font_size_override("font_size", 16)
-		_wire_button_juice(buy_btn)
+		# 3. Right: Lime green buy button
+		var buy_btn := _lime_buy_button("%d COINS\n(+%d)" % [item["cost"], item["amount"]], Vector2(148, 72))
 		var item_id: String = item["id"]
 		var item_cost: int = item["cost"]
 		var item_amt: int = item["amount"]
 		buy_btn.pressed.connect(func():
 			powerup_refill_requested.emit(item_id, item_cost, item_amt)
 		)
-		row_card.add_child(buy_btn)
+		row.add_child(buy_btn)
 
 	# Best Value Bundle Card at the bottom
-	var bundle_card := _tex_panel(Vector2.ZERO, Vector2(576, 136), PanelHudTex)
-	bundle_card.custom_minimum_size = Vector2(576, 136)
+	var bundle_card := PanelContainer.new()
+	bundle_card.custom_minimum_size = Vector2(590, 132)
+	bundle_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var b_style := StyleBoxFlat.new()
+	b_style.bg_color = Color(0.14, 0.12, 0.05, 0.95)
+	b_style.border_color = Tokens.GOLD.darkened(0.2)
+	b_style.set_border_width_all(3)
+	b_style.border_width_bottom = 6
+	b_style.set_corner_radius_all(16)
+	b_style.content_margin_left = 14
+	b_style.content_margin_right = 14
+	b_style.content_margin_top = 10
+	b_style.content_margin_bottom = 10
+	bundle_card.add_theme_stylebox_override("panel", b_style)
 	upgrades_body_root.add_child(bundle_card)
 
-	var b_icon_frame := _pill_box(Vector2(16, 20), Vector2(90, 96), Color("261b07"), Tokens.GOLD, 14)
-	bundle_card.add_child(b_icon_frame)
-	_add_tex_icon(b_icon_frame, IconStar, Vector2(15, 18), Vector2(60, 60))
+	var b_row := HBoxContainer.new()
+	b_row.add_theme_constant_override("separation", 14)
+	b_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	bundle_card.add_child(b_row)
 
-	var b_title := _label("RESCUE PACK (BEST VALUE)", 22, Tokens.GOLD)
+	b_row.add_child(_icon_slot_box(IconStar, Vector2(68, 68)))
+
+	var b_info := VBoxContainer.new()
+	b_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b_info.alignment = BoxContainer.ALIGNMENT_CENTER
+	b_info.add_theme_constant_override("separation", 4)
+	b_row.add_child(b_info)
+
+	var b_title := Label.new()
+	b_title.text = "RESCUE PACK (BEST VALUE)"
+	b_title.add_theme_font_override("font", GameFont)
+	b_title.add_theme_font_size_override("font_size", 18)
 	b_title.add_theme_color_override("font_color", Tokens.GOLD)
-	b_title.position = Vector2(118, 20); b_title.size = Vector2(270, 30)
-	bundle_card.add_child(b_title)
+	b_title.add_theme_color_override("font_outline_color", Color("0a1824"))
+	b_title.add_theme_constant_override("outline_size", 5)
+	b_info.add_child(b_title)
 
-	var b_sub := _label("+2 Siren, +2 Crane, +2 Freeze, +3 Hints", 16, OFF_WHITE)
-	b_sub.position = Vector2(118, 56); b_sub.size = Vector2(270, 60); b_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	bundle_card.add_child(b_sub)
+	var b_sub := Label.new()
+	b_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b_sub.text = "+2 Siren, +2 Crane, +2 Freeze, +3 Hints"
+	b_sub.add_theme_font_override("font", GameFont)
+	b_sub.add_theme_font_size_override("font_size", 14)
+	b_sub.add_theme_color_override("font_color", OFF_WHITE)
+	b_sub.add_theme_color_override("font_outline_color", Color("081520"))
+	b_sub.add_theme_constant_override("outline_size", 3)
+	b_info.add_child(b_sub)
 
-	var b_btn := _tex_button("150 COINS\n(ALL 4)", Vector2(404, 28), Vector2(156, 80), BtnGoldTex)
-	b_btn.add_theme_font_size_override("font_size", 18)
-	_wire_button_juice(b_btn)
+	var b_btn := _lime_buy_button("150 COINS\n(ALL 4)", Vector2(148, 72))
 	b_btn.pressed.connect(func():
 		powerup_pack_purchased.emit()
 	)
-	bundle_card.add_child(b_btn)
+	b_row.add_child(b_btn)
 
 
 func _animate_pulse(node: Control, max_scale := 1.06, duration := 0.8) -> void:
@@ -1422,4 +1742,126 @@ func _flat_round_button(text: String, pos: Vector2, size: Vector2, bg: Color, bo
 	btn.add_theme_stylebox_override("normal", normal)
 	btn.add_theme_stylebox_override("hover", hover)
 	btn.add_theme_stylebox_override("pressed", pressed)
+	return btn
+
+func _dock_card(title_txt: String, icon_tex: Texture2D, bg_col: Color, on_press: Callable, show_badge: bool = false) -> Control:
+	var root_card := Control.new()
+	root_card.custom_minimum_size = Vector2(154, 112)
+	root_card.size = Vector2(154, 112)
+
+	var btn := Button.new()
+	btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var st := StyleBoxFlat.new()
+	st.bg_color = bg_col
+	st.border_color = Color("12202b")
+	st.set_border_width_all(3)
+	st.border_width_bottom = 6
+	st.set_corner_radius_all(16)
+	var hv := st.duplicate()
+	hv.bg_color = bg_col.lightened(0.12)
+	btn.add_theme_stylebox_override("normal", st)
+	btn.add_theme_stylebox_override("hover", hv)
+	btn.add_theme_stylebox_override("pressed", hv)
+	btn.pressed.connect(on_press)
+	root_card.add_child(btn)
+
+	var ic := TextureRect.new()
+	ic.texture = icon_tex
+	ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	ic.position = Vector2(49, 10)
+	ic.size = Vector2(56, 52)
+	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root_card.add_child(ic)
+
+	var footer := PanelContainer.new()
+	footer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	footer.position = Vector2(4, 72)
+	footer.size = Vector2(146, 34)
+	var fs := StyleBoxFlat.new()
+	fs.bg_color = Color("f2f6fa")
+	fs.corner_radius_bottom_left = 12
+	fs.corner_radius_bottom_right = 12
+	footer.add_theme_stylebox_override("panel", fs)
+	root_card.add_child(footer)
+
+	var lbl := Label.new()
+	lbl.text = title_txt
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_override("font", GameFont)
+	lbl.add_theme_font_size_override("font_size", 15)
+	lbl.add_theme_color_override("font_color", Color("142430"))
+	footer.add_child(lbl)
+
+	if show_badge:
+		var badge := PanelContainer.new()
+		badge.name = "Badge"
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.position = Vector2(128, -6)
+		badge.size = Vector2(26, 26)
+		var bs := StyleBoxFlat.new()
+		bs.bg_color = Color("e83b3b")
+		bs.border_color = Color("ffffff")
+		bs.set_border_width_all(2)
+		bs.set_corner_radius_all(8)
+		badge.add_theme_stylebox_override("panel", bs)
+		var bl := Label.new()
+		bl.text = "!"
+		bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		bl.add_theme_font_override("font", GameFont)
+		bl.add_theme_font_size_override("font_size", 16)
+		bl.add_theme_color_override("font_color", Color("ffffff"))
+		badge.add_child(bl)
+		root_card.add_child(badge)
+		_pulsing_badges.append(badge)
+
+	_wire_button_juice(btn)
+	return root_card
+
+func _icon_slot_box(icon_tex: Texture2D, box_size: Vector2) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.custom_minimum_size = box_size
+	p.size = box_size
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color("1e293b")
+	st.border_color = Color("0c1c26")
+	st.set_border_width_all(3)
+	st.border_width_bottom = 5
+	st.set_corner_radius_all(12)
+	st.content_margin_left = 6
+	st.content_margin_right = 6
+	st.content_margin_top = 6
+	st.content_margin_bottom = 6
+	p.add_theme_stylebox_override("panel", st)
+	var ic := TextureRect.new()
+	ic.texture = icon_tex
+	ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	p.add_child(ic)
+	return p
+
+func _lime_buy_button(text: String, btn_size: Vector2) -> Button:
+	var btn := Button.new()
+	btn.text = text
+	btn.custom_minimum_size = btn_size
+	btn.size = btn_size
+	btn.add_theme_font_override("font", GameFont)
+	btn.add_theme_font_size_override("font_size", 17)
+	btn.add_theme_color_override("font_color", Color("ffffff"))
+	btn.add_theme_color_override("font_outline_color", Color("153309"))
+	btn.add_theme_constant_override("outline_size", 6)
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color("7ed321")
+	st.border_color = Color("153309")
+	st.set_border_width_all(3)
+	st.border_width_bottom = 6
+	st.set_corner_radius_all(14)
+	var hv := st.duplicate()
+	hv.bg_color = Color("94e835")
+	btn.add_theme_stylebox_override("normal", st)
+	btn.add_theme_stylebox_override("hover", hv)
+	btn.add_theme_stylebox_override("pressed", hv)
+	btn.add_theme_stylebox_override("disabled", st)
+	_wire_button_juice(btn)
 	return btn
